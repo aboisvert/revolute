@@ -1,9 +1,9 @@
 Revolute: Scala-based Query Language for Hadoop
 ===============================================
 
-Think Fancy Scala DSL over Cascading.  Or "Cascalog for Scala".
+Think Fancy Scala DSL over Cascading -- or Cascalog for Scala.
 
-Currently more of an experiment than anything else at this point.
+More of an experiment than anything else at this point.
 
 ### Building ###
 
