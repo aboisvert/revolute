@@ -1,0 +1,50 @@
+package revolute.query
+
+import revolute.util.Node
+import cascading.tuple.Fields
+
+abstract class Table[T](_tableName: String) extends AbstractTable[T](_tableName) {
+
+  def column[C: TypeMapper](n: String, options: ColumnOption[C]*) = new NamedColumn[C](this, n, options:_*)
+
+  def innerJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Inner)
+  def leftJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Left)
+  def rightJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Right)
+  def outerJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Outer)
+}
+
+abstract class BasicTable[T: TypeMapper](_tableName: String) extends AbstractBasicTable[T](_tableName) {
+}
+
+abstract class AbstractBasicTable[T](_tableName: String) extends AbstractTable[T](_tableName) {
+
+  def column[C: TypeMapper](n: String, options: ColumnOption[C]*) = new NamedColumn[C](this, n, options:_*)
+
+  def innerJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Inner)
+  def leftJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Left)
+  def rightJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Right)
+  def outerJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Outer)
+}
+
+object BasicImplicitConversions {
+
+  implicit def columnsToFields(p: Projection[_]): Fields = p.fields
+  
+  implicit def baseColumnToColumnOps[B1 : BaseTypeMapper](c: Column[B1]): ColumnOps[B1, B1] = c match {
+    case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, B1]]
+    case _ => new ColumnOps[B1, B1] { protected[this] val leftOperand = Node(c) }
+  }
+
+  implicit def optionColumnToColumnOps[B1](c: Column[Option[B1]]): ColumnOps[B1, Option[B1]] = c match {
+    case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, Option[B1]]]
+    case _ => new ColumnOps[B1, Option[B1]] { protected[this] val leftOperand = Node(c) }
+  }
+
+  implicit def columnToOptionColumn[T : BaseTypeMapper](c: Column[T]): Column[Option[T]] = c.?
+
+  implicit def valueToConstColumn[T : TypeMapper](v: T) = new ConstColumn[T]("valueToConstColumn", v)
+
+  implicit def tableToQuery[T <: TableBase[_]](t: T) = Query(t.mapOp(n => Node(n)))
+
+  implicit def columnToOrdering(c: Column[_]): Ordering = Ordering.Asc(Node(c))
+}
