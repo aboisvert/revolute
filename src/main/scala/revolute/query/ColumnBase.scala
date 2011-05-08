@@ -4,6 +4,7 @@ import revolute.QueryException
 
 /** Common base trait for columns, tables and projections (but not unions and joins) */
 trait ColumnBase[+T] {
+  type _T = T
   def columnName: Option[String] = None
 }
 

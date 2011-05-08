@@ -25,7 +25,7 @@ class Query[E <: ColumnBase[_]](
   val value: E, 
   val cond: List[Column[_]],
   val modifiers: List[QueryModifier]
-) {
+) extends ColumnBase[E#_T] {
 
   def visit[X](vis: QueryVisitor[E, X]) = vis.query(value, cond, modifiers)
   
@@ -50,7 +50,7 @@ class Query[E <: ColumnBase[_]](
 
   def orderBy(by: Ordering*) = new Query[E](value, cond, modifiers ::: by.toList)
 
-  // def exists = ColumnOps.Exists(map(_ => ConstColumn("exists", 1)))
+  def exists = ColumnOps.Exists(map(_ => ConstColumn("exists", 1)))
 
   def typedModifiers[T <: QueryModifier](implicit m: ClassManifest[T]) =
     modifiers.filter(m.erasure.isInstance(_)).asInstanceOf[List[T]]
