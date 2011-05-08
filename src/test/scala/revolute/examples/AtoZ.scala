@@ -6,6 +6,7 @@ import cascading.scheme.TextDelimited
 import revolute._
 import revolute.query._
 import revolute.query.BasicImplicitConversions._
+import revolute.query.QueryBuilder._
 import revolute.util._
 
 import org.scalatest.WordSpec

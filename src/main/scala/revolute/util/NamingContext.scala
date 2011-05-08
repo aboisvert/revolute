@@ -5,10 +5,10 @@ import revolute.query.Table
 import scala.collection._
 
 trait NamingContext {
-  def nameFor(t: Node): String
+  def nameFor(t: Any): String
 
-  def overrideName(node: Node, newName: String): NamingContext = new NamingContext {
-    def nameFor(n: Node) = if (n == node) newName else nameFor(n)
+  def overrideName(node: Any, newName: String): NamingContext = new NamingContext {
+    def nameFor(n: Any) = if (n == node) newName else nameFor(n)
   }
   
   val tableBindings = mutable.Map[Table[_], Tap]()
@@ -20,15 +20,15 @@ trait NamingContext {
 
 object NamingContext {
   def apply() = new NamingContext {
-    private val tnames = mutable.Map[RefId[Node], String]()
+    private val tnames = mutable.Map[Any, String]()
     private var nextTid = 1
 
-    def nameFor(t: Node) = tnames.get(new RefId(t)) match {
+    def nameFor(t: Any) = tnames.get(t) match {
       case Some(n) => n
       case None =>
         val n = "t" + nextTid
         nextTid += 1
-        tnames.put(new RefId(t), n)
+        tnames.put(t, n)
         n
     }
   }

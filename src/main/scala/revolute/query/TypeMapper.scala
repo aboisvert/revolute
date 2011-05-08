@@ -52,8 +52,12 @@ object TypeMapper {
     def apply = StandardTypeMappers.StringTypeMapperDelegate
   }
 
-  object NullTypeMapper extends BaseTypeMapper[AnyRef] {
+  implicit object NullTypeMapper extends BaseTypeMapper[AnyRef] {
     def apply = StandardTypeMappers.NullTypeMapperDelegate
+  }
+
+  implicit object UnitTypeMapper extends BaseTypeMapper[Unit] {
+    def apply = StandardTypeMappers.UnitTypeMapperDelegate
   }
 }
 

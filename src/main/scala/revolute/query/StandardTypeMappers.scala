@@ -38,4 +38,8 @@ object StandardTypeMappers {
   object NullTypeMapperDelegate extends TypeMapperDelegate[AnyRef] {
     def zero = null
   }
+
+  object UnitTypeMapperDelegate extends TypeMapperDelegate[Unit] {
+    def zero = ()
+  }
 }

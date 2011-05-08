@@ -1,6 +1,5 @@
 package revolute.query
 
-import revolute.util.Node
 import cascading.tuple.Fields
 
 abstract class Table[T](_tableName: String) extends AbstractTable[T](_tableName) {
@@ -32,19 +31,19 @@ object BasicImplicitConversions {
   
   implicit def baseColumnToColumnOps[B1 : BaseTypeMapper](c: Column[B1]): ColumnOps[B1, B1] = c match {
     case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, B1]]
-    case _ => new ColumnOps[B1, B1] { protected[this] val leftOperand = Node(c) }
+    case _ => new ColumnOps[B1, B1] { protected[this] val leftOperand = c }
   }
 
   implicit def optionColumnToColumnOps[B1](c: Column[Option[B1]]): ColumnOps[B1, Option[B1]] = c match {
     case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, Option[B1]]]
-    case _ => new ColumnOps[B1, Option[B1]] { protected[this] val leftOperand = Node(c) }
+    case _ => new ColumnOps[B1, Option[B1]] { protected[this] val leftOperand = c }
   }
 
   implicit def columnToOptionColumn[T : BaseTypeMapper](c: Column[T]): Column[Option[T]] = c.?
 
-  implicit def valueToConstColumn[T : TypeMapper](v: T) = new ConstColumn[T]("valueToConstColumn", v)
+  implicit def valueToConstColumn[T : TypeMapper](v: T) = ConstColumn[T]("valueToConstColumn", v)
 
-  implicit def tableToQuery[T <: TableBase[_]](t: T) = Query(t.mapOp(n => Node(n)))
+  implicit def tableToQuery[T <: ColumnBase[_]](t: T): Query[T] = new Query(t, Nil, Nil)
 
-  implicit def columnToOrdering(c: Column[_]): Ordering = Ordering.Asc(Node(c))
+  implicit def columnToOrdering(c: Column[_]): Ordering = Ordering.Asc(By(c))
 }

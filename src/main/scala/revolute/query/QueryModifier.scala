@@ -1,11 +1,14 @@
 package revolute.query;
 
-import revolute.util.Node
+trait QueryModifier
 
-trait QueryModifier extends Node
+object By {
+  def apply(x: Any) = new By(x)
+}
+class By(x: Any)
 
 sealed abstract class Ordering extends QueryModifier {
-  val by: Node
+  val by: By
   val nullOrdering: Ordering.NullOrdering
   def nodeChildren = by :: Nil
   def nullsFirst: Ordering
@@ -13,13 +16,13 @@ sealed abstract class Ordering extends QueryModifier {
 }
 
 object Ordering {
-  final case class Asc(val by: Node, val nullOrdering: Ordering.NullOrdering = Ordering.NullsDefault) extends Ordering {
+  final case class Asc(val by: By, val nullOrdering: Ordering.NullOrdering = Ordering.NullsDefault) extends Ordering {
     override def toString = "Ordering.Asc"
     def nullsFirst = copy(nullOrdering = Ordering.NullsFirst)
     def nullsLast = copy(nullOrdering = Ordering.NullsLast)
   }
 
-  final case class Desc(val by: Node, val nullOrdering: Ordering.NullOrdering = Ordering.NullsDefault) extends Ordering {
+  final case class Desc(val by: By, val nullOrdering: Ordering.NullOrdering = Ordering.NullsDefault) extends Ordering {
     override def toString = "Ordering.Desc"
     def nullsFirst = copy(nullOrdering = Ordering.NullsFirst)
     def nullsLast = copy(nullOrdering = Ordering.NullsLast)
@@ -31,7 +34,7 @@ object Ordering {
   final case object NullsLast extends NullOrdering
 }
 
-final case class Grouping(val by: Node) extends QueryModifier {
+final case class Grouping(val by: By) extends QueryModifier {
   def nodeChildren = by :: Nil
   override def toString = "Grouping"
 }

@@ -11,56 +11,14 @@ import revolute.util._
 import scala.collection._
 import scala.collection.mutable.{HashMap, HashSet}
 
-class ConcreteBasicQueryBuilder(
-  _query: Query[_], 
-  _nc: NamingContext, 
-  parent: Option[BasicQueryBuilder]
-) extends BasicQueryBuilder(_query, _nc, parent) {
-  type Self = BasicQueryBuilder
-
-  protected def createSubQueryBuilder(query: Query[_], nc: NamingContext) =
-    new ConcreteBasicQueryBuilder(query, nc, Some(this))
-}
-
-abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: Option[BasicQueryBuilder]) {
-  type Self <: BasicQueryBuilder
-
-  protected def createSubQueryBuilder(query: Query[_], nc: NamingContext): Self
-
+class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) 
+  extends QueryVisitor[E, Pipe]
+{
   protected val query: Query[_] = _query
   protected var nc: NamingContext = _nc
-  protected val localTables = new HashMap[String, Node]
-  protected val declaredTables = new HashSet[String]
-  protected val subQueryBuilders = new HashMap[RefId[Query[_]], Self]
 
-  protected def localTableName(n: Node) = n match {
-    case Join.JoinPart(table, from) =>
-      // Special case for Joins: A join combines multiple tables but does not alias them
-      localTables(nc.nameFor(from)) = from
-      nc.nameFor(table)
-    case _ =>
-      val name = nc.nameFor(n)
-      localTables(name) = n
-      name
-  }
-
-  protected def isDeclaredTable(name: String): Boolean =
-    if (declaredTables contains name) true
-    else parent map (_.isDeclaredTable(name)) getOrElse (false)
-  
-  protected def subQueryBuilderFor(q: Query[_]) =
-    subQueryBuilders.getOrElseUpdate(new RefId(q), createSubQueryBuilder(q, nc))
-
-  final def build(): Pipe = {
-    Console.println("build: value=%s" format _query.value)
-    
-    def nameFor(t: TableBase[_]) = t match {
-      case t: AbstractTable[_] => t.tableName
-      case _ => _nc.nameFor(t)
-    }
-    
-    // top-level pipes
-    var topLevel = _query.value match {
+  override def query(value: E, cond: List[Column[_]], modifiers: List[QueryModifier]): Pipe = {
+    val topLevel = _query.value match {
       case nc: NamedColumn[_] =>
         new Pipe(nameFor(nc.table))
         
@@ -84,15 +42,24 @@ abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: O
 
     select(_query.value, pipe)
     filters(_query.cond, pipe)
-    // _query.condHaving
     // _query.modifiers
     pipe.pipe
+  }
+
+  protected def nameFor(t: TableBase[_]) = t match {
+    case t: AbstractTable[_] => t.tableName
+    case _ => _nc.nameFor(t)
+  }
+  
+  final def build(): Pipe = {
+    Console.println("build: value=%s" format _query.value)
+    _query.visit(this)
   }
   
   protected def select(value: Any, builder: PipeBuilder) {
     Console.println("select: value=%s" format value)
     value match {
-      case nc: NamedColumn[_] => builder += (new Each(_, new Fields(nc.columnName), new Identity(), Fields.RESULTS))
+      case nc: NamedColumn[_] => builder += (new Each(_, new Fields(nc.columnName.get), new Identity(), Fields.RESULTS))
       case p: Projection[_] => builder += (new Each(_, p.fields, new Identity(), Fields.RESULTS))
     }
   }
@@ -102,9 +69,9 @@ abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: O
     conditions foreach { c => innerExpr(c, pipe) }
   }
 
-  protected def expr(c: Node, b: PipeBuilder): Unit = expr(c, b, false, false)
+  protected def expr(c: Any, b: PipeBuilder): Unit = expr(c, b, false, false)
 
-  protected def expr(c: Node, b: PipeBuilder, rename: Boolean, topLevel: Boolean): Unit = {
+  protected def expr(c: Any, b: PipeBuilder, rename: Boolean, topLevel: Boolean): Unit = {
     c match {
       case p: Projection[_] => {
         p.nodeChildren.foreach { c =>
@@ -116,13 +83,13 @@ abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: O
     }
   }
 
-  protected def innerExpr(c: Node, pipe: PipeBuilder): Unit = c match {
+  protected def innerExpr(c: Any, pipe: PipeBuilder): Unit = c match {
     case ConstColumn(_, null) => error("todo")
     case ColumnOps.Not(ColumnOps.Is(l, ConstColumn(_, null))) => error("todo")
     case ColumnOps.Not(e) => error("todo")
     case ColumnOps.InSet(e, seq, tm, bind) => error("todo")
     case ColumnOps.Is(c: ColumnBase[_], v: ConstColumn[_]) =>
-      pipe += (new Each(_, new Fields(c.columnName), new ConstFilter(v.value)))
+      pipe += (new Each(_, new Fields(c.columnName getOrElse "TODO"), new EqualFilter(v.value)))
     case ColumnOps.Is(l, ConstColumn(_, null)) => error("todo")
     case ColumnOps.Is(l, r) => error("todo")
     case s: SimpleFunction => error("todo")
@@ -136,8 +103,8 @@ abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: O
     case query:Query[_] => error("todo")
     case c @ ConstColumn(_, v) => error("todo")
     case n: NamedColumn[_] => error("todo")
-    case SubqueryColumn(pos, sq, _) => error("todo")
-    case t: AbstractTable[_] => expr(Node(t.*), pipe)
+    // case SubqueryColumn(pos, sq, _) => error("todo")
+    case t: AbstractTable[_] => expr(t.*, pipe)
     case t: TableBase[_] => error("todo")
     case _ => throw new QueryException("Don't know what to do with node \""+c+"\" in an expression")
   }
@@ -147,16 +114,16 @@ abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: O
     case Nil => ()
   }
 
-  protected def table(t: Node, name: String, b: PipeBuilder): Unit = t match {
+  protected def table(t: Any, name: String, b: PipeBuilder): Unit = t match {
     case base: AbstractTable[_] => error("todo")
-    case Subquery(sq: Query[_], rename) => error("todo")
-    case Subquery(Union(all, sqs), rename) => error("todo")
+    //case Subquery(sq: Query[_], rename) => error("todo")
+    //case Subquery(Union(all, sqs), rename) => error("todo")
     case j: Join[_,_] => error("todo")
   }
 
   protected def createJoin(j: Join[_,_], b: PipeBuilder): Unit = {
-    val l = j.leftNode
-    val r = j.rightNode
+    val l = j.left.asInstanceOf[TableBase[_]]  // FIXME
+    val r = j.right.asInstanceOf[TableBase[_]] // FIXME
     table(l, nc.nameFor(l), b)
     // b += (new CoGroup(_, j.joinType))
     r match {
@@ -165,27 +132,18 @@ abstract class BasicQueryBuilder(_query: Query[_], _nc: NamingContext, parent: O
     }
     expr(j.on, b)
   }
-
-  protected def untupleColumn(columns: Node) = {
-    val l = new scala.collection.mutable.ListBuffer[Node]
-    def f(c: Any): Unit = c match {
-      case p: Projection[_] =>
-        for (i <- 0 until p.productArity)
-          f(Node(p.productElement(i)))
-      case t: AbstractTable[_] => f(Node(t.*))
-      case n: Node => l += n
-      case v => throw new QueryException("Cannot untuple non-Node value " + v)
-    }
-    f(Node(columns))
-    l.toList
-  }
 }
 
-class ConstFilter(val value: Any) extends Filter[Any] with java.io.Serializable {
-  def isRemove(flowProcess: FlowProcess, filterCall: FilterCall[Any]) = filterCall.getArguments.get(0) != value
+abstract class ConstFilter(val value: Any) extends Filter[Any] with java.io.Serializable {
+  def filter(x: Any): Boolean
+  def isRemove(flowProcess: FlowProcess, filterCall: FilterCall[Any]) = filter(filterCall.getArguments.get(0))
   def isSafe = true
   def getNumArgs = 1
   def getFieldDeclaration = Fields.ALL
   def prepare(flowProcess: FlowProcess, operationCall: OperationCall[Any]) = ()
   def cleanup(flowProcess: FlowProcess, operationCall: OperationCall[Any]) = ()
+}
+
+class EqualFilter(_value: Any) extends ConstFilter(_value) {
+  override def filter(x: Any) = (x != value)
 }

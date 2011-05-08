@@ -23,7 +23,7 @@ object ExampleQueries {
   
   /* Predator detection */
   for {
-    p1 <- Persons;
+    p1 <- tableToQuery[Persons.type](Persons);
     p2 <- Persons where { p => p.age < 18 && p1.age - p.age > 5 }
     _ <- Follows where { f => (f.follower is p1.name) && (f.followee is p2.name) }
     _ <- Query.orderBy((p1.age - p2.age) desc)
@@ -31,7 +31,7 @@ object ExampleQueries {
   
   /* How many people do people follow? */
   val x = for {
-    p <- Persons
+    p <- tableToQuery[Persons.type](Persons);
     f <- Follows where (_.follower is p.name)
   } yield p.name ~ f.count
   println(x)
