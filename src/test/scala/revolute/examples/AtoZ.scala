@@ -37,18 +37,17 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         for (az <- AtoZ) yield az.letter
       }
       result.size should be === 26
-      result should contain ("a")
-      result should contain ("z")
+      result should contain (Seq("a"))
+      result should contain (Seq("z"))
     }
 
     "map multiple fields" in {
       val result = sandbox run {
         for (az <- AtoZ) yield az.letter ~ az.number
       }
-
       result.size should be === 26
-      result should contain ("a\t1")
-      result should contain ("z\t26")
+      result should contain (Seq("a", "1"))
+      result should contain (Seq("z", "26"))
     }
 
     "filter tuples using where and ===" in {
@@ -57,8 +56,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           az <- AtoZ where (_.letter === "a")
         } yield az.letter ~ az.number
       }
-      result.size should be === 1
-      result.head should be === ("a\t1")
+      result should be === Seq(Seq("a", "1"))
     }
 
     "filter tuples using if and ===" in {
@@ -67,8 +65,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           az <- AtoZ if (az.letter === "a")
         } yield az.letter ~ az.number
       }
-      result.size should be === 1
-      result.head should be === ("a\t1")
+      result should be === Seq(Seq("a", "1"))
     }
   }
 }
@@ -82,14 +79,14 @@ class Sandbox(val outputDir: String) {
     file + "-" + outputNumber
   }
 
-  def run[T <: ColumnBase[_]](query: Query[T])(implicit context: NamingContext): Seq[String] = {
+  def run[T <: ColumnBase[_]](query: Query[T])(implicit context: NamingContext): Seq[Seq[String]] = {
     val output = outputFile(outputDir)
 
     val flow = query.outputTo(new Hfs(new TextDelimited(query.fields, "\t"), output, true))
     flow.start()
     flow.complete()
 
-    val lines = Source.fromFile(output + "/part-00000").getLines.toSeq
+    val lines = Source.fromFile(output + "/part-00000").getLines.toSeq map (_.split("\t").toSeq)
     lines
   }
 }
