@@ -31,7 +31,7 @@ class CascadingSuite extends WordSpec with ShouldMatchers {
 
       val source = new Hfs(new TextDelimited(fields, " "), inputFile)
       val sink = new Hfs(new TextDelimited(fields, "\t"), outputDir + "a-z", true)
-      
+
       var pipe = new Pipe("identity")
       pipe = new Each( pipe, new Identity(fields))
 
@@ -40,7 +40,7 @@ class CascadingSuite extends WordSpec with ShouldMatchers {
 
       flow.start()
       flow.complete()
-      
+
       val lines = Source.fromFile(outputDir + "a-z/part-00000").getLines.toSeq
       lines.size should be === 26
       lines should contain ("a\t1")

@@ -12,6 +12,6 @@ class PipeBuilder(private var _pipe: Pipe) {
   def +=(f: Pipe => Pipe): Unit = {
     _pipe = f(_pipe)
   }
-  
+
   def pipe = _pipe
 }

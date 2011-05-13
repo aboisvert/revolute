@@ -21,9 +21,9 @@ final class JoinBase[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](_left: T1, _r
 }
 
 final class Join[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](
-  val left: T1, 
+  val left: T1,
   val right: T2,
-  val joinType: Join.JoinType, 
+  val joinType: Join.JoinType,
   val on: Any
 ) extends TableBase[Nothing] {
   override def toString = "Join(%s, %s)" format (left, right)

@@ -10,7 +10,7 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
   def <>[R](f: (T => R), g: (R => Option[T])): MappedProjection[R,T] = new MappedProjection(this, f, g)
 
   def columns = productIterator map (_.asInstanceOf[Column[_]])
-  
+
   def fields: Fields = {
     val names: Array[Comparable[_]] = columns flatMap (_.columnName) toArray
     val fields: Fields = new Fields(names: _*)

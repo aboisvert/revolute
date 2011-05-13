@@ -20,7 +20,7 @@ object Follows extends Table[(String, String)]("follows") {
 object ExampleQueries {
   /* List all users whose last name is "Boisvert" */
   for (p <- Persons where (_.name matches "Boisvert$")) yield p.name
-  
+
   /* Predator detection */
   for {
     p1 <- Persons
@@ -28,7 +28,7 @@ object ExampleQueries {
     _ <- Follows where { f => (f.follower is p1.name) && (f.followee is p2.name) }
     _ <- Query.orderBy((p1.age - p2.age) desc)
   } yield p1.name ~ p2.name
-  
+
   /* How many people do people follow? */
   val x = for {
     p <- Persons

@@ -22,13 +22,13 @@ object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
 
 /** Query monad: contains AST for query's projection, accumulated restrictions and other modifiers. */
 class Query[E <: ColumnBase[_]](
-  val value: E, 
+  val value: E,
   val cond: List[Column[_]],
   val modifiers: List[QueryModifier]
 ) extends ColumnBase[E#_T] {
 
   def visit[X](vis: QueryVisitor[E, X]) = vis.query(value, cond, modifiers)
-  
+
   def flatMap[F <: ColumnBase[_]](f: E => Query[F]): Query[F] = {
     val q = f(value)
     new Query(q.value, cond ::: q.cond, modifiers ::: q.modifiers)
@@ -75,7 +75,7 @@ class Query[E <: ColumnBase[_]](
 
   // Query[Column[_]] only
   //def asColumn(implicit ev: E <:< Column[_]): E = value
-  
+
   def fields: Fields = {
     value match {
       case nc: NamedColumn[_] => new Fields(nc.columnName.get)

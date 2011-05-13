@@ -11,7 +11,7 @@ import revolute.util._
 import scala.collection._
 import scala.collection.mutable.{HashMap, HashSet}
 
-class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) 
+class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext)
   extends QueryVisitor[E, Pipe]
 {
   protected val query: Query[_] = _query
@@ -21,10 +21,10 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
     val topLevel = _query.value match {
       case nc: NamedColumn[_] =>
         new Pipe(nameFor(nc.table))
-        
+
       case p: Projection[_] =>
-        val tables = p.columns.foldLeft(Set[TableBase[_]]()) { case (tables, c) => 
-          c match { 
+        val tables = p.columns.foldLeft(Set[TableBase[_]]()) { case (tables, c) =>
+          c match {
             case n: NamedColumn[_] => tables + n.table
             case _ => tables
           }
@@ -37,7 +37,7 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
           new CoGroup(pipes.toArray: _*)
         }
     }
-    
+
     val pipe = new PipeBuilder(topLevel)
 
     select(_query.value, pipe)
@@ -50,12 +50,12 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
     case t: AbstractTable[_] => t.tableName
     case _ => _nc.nameFor(t)
   }
-  
+
   final def build(): Pipe = {
     Console.println("build: value=%s" format _query.value)
     _query.visit(this)
   }
-  
+
   protected def select(value: Any, builder: PipeBuilder) {
     Console.println("select: value=%s" format value)
     value match {
@@ -63,7 +63,7 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
       case p: Projection[_] => builder += (new Each(_, p.fields, new Identity(), Fields.RESULTS))
     }
   }
-  
+
   protected def filters(conditions: List[Column[_]], pipe: PipeBuilder) {
     Console.println("filter: conditions=%s" format conditions)
     conditions foreach { c => innerExpr(c, pipe) }

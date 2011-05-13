@@ -28,7 +28,7 @@ abstract class AbstractBasicTable[T](_tableName: String) extends AbstractTable[T
 object BasicImplicitConversions {
 
   implicit def columnsToFields(p: Projection[_]): Fields = p.fields
-  
+
   implicit def baseColumnToColumnOps[B1 : BaseTypeMapper](c: Column[B1]): ColumnOps[B1, B1] = c match {
     case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, B1]]
     case _ => new ColumnOps[B1, B1] { protected[this] val leftOperand = c }

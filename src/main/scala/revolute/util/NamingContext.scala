@@ -10,9 +10,9 @@ trait NamingContext {
   def overrideName(node: Any, newName: String): NamingContext = new NamingContext {
     def nameFor(n: Any) = if (n == node) newName else nameFor(n)
   }
-  
+
   val tableBindings = mutable.Map[Table[_], Tap]()
-  
+
   def sources = {
     scala.collection.JavaConversions.asJavaMap(tableBindings map { case (table, tap) => (table.tableName, tap) })
   }

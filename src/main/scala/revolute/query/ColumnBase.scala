@@ -11,17 +11,17 @@ trait ColumnBase[+T] {
 /** Base class for columns */
 abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   final val typeMapper = implicitly[TypeMapper[T]]
-  
+
   def orElse(n: =>T): Column[T] = new WrappedColumn[T](this) { }
-  
+
   final def orFail = orElse { throw new QueryException("Read NULL value for column " + this) }
-  
+
   def ? : Column[Option[T]] = error("todo") // new WrappedColumn[](this)(createOptionTypeMapper)
 
   def getOr[U](n: => U)(implicit ev: Option[U] =:= T): Column[U] = error("todo") // new WrappedColumn[U](this)(new BaseTypeMapper[U] {}) { }
-  
+
   def get[U](implicit ev: Option[U] =:= T): Column[U] = getOr[U] { throw new QueryException("Read NULL value for column "+this) }
-  
+
   final def ~[U](b: Column[U]) = new Projection2[T, U](this, b)
 
   // Functions which don't need an OptionMapper
@@ -40,7 +40,7 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
 
 object ConstColumn {
   def NULL = apply[AnyRef]("NULL", null)(TypeMapper.NullTypeMapper)
-  
+
   def apply[T : TypeMapper](columnName: String, value: T): ConstColumn[T] = ConstColumn(Some(columnName), value)
   def apply[T : TypeMapper](value: T): ConstColumn[T] = ConstColumn(None, value)
 }

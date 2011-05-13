@@ -102,7 +102,7 @@ trait ColumnOps[B1, P1] {
   // String only
   def length[R](implicit om: OptionMapper2[String, String, Int, P1, P1, R]): Column[R] =
     om(Length(leftOperand))
-  
+
   def matches[P2, R](e: Column[P2])(implicit om: OptionMapper2[String, String, Boolean, P1, P2, R]): Column[R] =
     om(Regex(leftOperand, e))
   def regex[P2, R](e: Column[P2])(implicit om: OptionMapper2[String, String, Boolean, P1, P2, R]): Column[R] =
@@ -170,6 +170,6 @@ object ColumnOps {
   case class Concat(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction { val name = "concat" }
   class StartsWith(n: ColumnBase[_], s: String) extends Regex(n, ConstColumn(s, regexEscape(s) + "$"))
   class EndsWith(n: ColumnBase[_], s: String) extends Regex(n, ConstColumn(s, "^" + regexEscape(s)))
-  
+
   private def regexEscape(s: String) = """\Q""" + s + """\E"""
 }
