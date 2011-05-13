@@ -3,7 +3,6 @@ package revolute.query
 import cascading.tuple.Fields
 
 abstract class Table[T](_tableName: String) extends AbstractTable[T](_tableName) {
-
   def column[C: TypeMapper](n: String, options: ColumnOption[C]*) = new NamedColumn[C](this, n, options:_*)
 
   def innerJoin[U <: TableBase[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Inner)

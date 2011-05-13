@@ -1,19 +1,11 @@
 package revolute.query
 
-import cascading.flow.{Flow, FlowConnector}
-import cascading.pipe.Pipe
-import cascading.tap.Tap
-
 import revolute.QueryException
-import revolute.util.{Expr, NamingContext}
+import revolute.util.NamingContext
 import revolute.query.StandardTypeMappers._
 
 import scala.reflect.Manifest
 import cascading.tuple.Fields
-
-trait QueryVisitor[E <: ColumnBase[_], T] {
-  def query(value: E, cond: List[Column[_]], modifiers: List[QueryModifier]): T
-}
 
 object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
   // def apply[E](value: ColumnBase[E]): Query[E] = new Query(value, Nil, Nil)
@@ -27,7 +19,7 @@ class Query[E <: ColumnBase[_]](
   val modifiers: List[QueryModifier]
 ) extends ColumnBase[E#_T] {
 
-  def visit[X](vis: QueryVisitor[E, X]) = vis.query(value, cond, modifiers)
+  // def visit[X](vis: QueryVisitor[E, X]) = vis.query(value, cond, modifiers)
 
   def flatMap[F <: ColumnBase[_]](f: E => Query[F]): Query[F] = {
     val q = f(value)
@@ -64,6 +56,8 @@ class Query[E <: ColumnBase[_]](
     new Query[E](value, cond, mod :: other)
   }
 
+  override def tables = value.tables ++ cond.flatMap(_.tables)
+
   // Query[ColumnBase[_]] only
   def union[O >: E <: ColumnBase[_]](other: Query[O]*) = Union(false, this :: other.toList)
 
@@ -80,6 +74,7 @@ class Query[E <: ColumnBase[_]](
     value match {
       case nc: NamedColumn[_] => new Fields(nc.columnName.get)
       case p: Projection[_] => p.fields
+      case _ => Fields.ALL
     }
   }
 
@@ -114,26 +109,6 @@ case class SubqueryColumn(pos: Int, subquery: Subquery, typeMapper: TypeMapper[_
 }
 */
 
-trait UnionVisitor[T] {
-  def union(all: Boolean, queries: List[Query[_]]): T
-}
-
-case class Union[-V[X] <: UnionVisitor[X]](all: Boolean, queries: List[Query[_]]) extends Expr[V] {
-  def accept[T](vis: V[T]): T = vis.union(all, queries)
-
+case class Union(all: Boolean, queries: List[Query[_]]) {
   override def toString = if (all) "Union all" else "Union"
 }
-
-object QueryBuilder {
-  implicit def queryToBuilder[T <: ColumnBase[_]](query: Query[T]) = new QueryBuilder(query)
-}
-
-class QueryBuilder[T <: ColumnBase[_]](val query: Query[T]) {
-  def outputTo(sink: Tap)(implicit context: NamingContext): Flow = {
-    val qb = new BasicQueryBuilder(query, NamingContext())
-    val pipe = qb.build()
-    val flow = new FlowConnector().connect(context.sources, sink, pipe)
-    flow
-  }
-}
-

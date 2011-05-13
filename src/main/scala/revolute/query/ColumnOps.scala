@@ -13,11 +13,13 @@ trait SimpleFunction {
 }
 
 object SimpleFunction {
+  /*
   def apply[T : TypeMapper](fname: String): (Seq[Column[_]] => OperatorColumn[T] with SimpleFunction) =
     (paramsC: Seq[Column[_]]) =>
       new OperatorColumn[T] with SimpleFunction {
         val name = fname
       }
+  */
 }
 
 trait SimpleBinaryOperator {
@@ -25,15 +27,18 @@ trait SimpleBinaryOperator {
 }
 
 object SimpleBinaryOperator {
+  /*
   def apply[T : TypeMapper](fname: String): ((Column[_], Column[_]) => OperatorColumn[T] with SimpleBinaryOperator) =
     (leftC: Column[_], rightC: Column[_]) =>
       new OperatorColumn[T] with SimpleBinaryOperator {
         val name = fname
       }
+  */
 }
 
 trait SimpleScalarFunction
 
+/* B1 => Column's type, P1 is sometimes Option[B1] */
 trait ColumnOps[B1, P1] {
   protected val leftOperand: ColumnBase[_]
   import ColumnOps._
@@ -129,45 +134,154 @@ trait ColumnOps[B1, P1] {
 
 object ColumnOps {
   // case class In(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean]
-  case class Count(query: ColumnBase[_]) extends OperatorColumn[Int] { val name = "count" }
-  case class CountAll(child: ColumnBase[_]) extends OperatorColumn[Int]
-  case class Mod[T](left: ColumnBase[_], right: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction { val name = "mod" }
-  case class Abs[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction { val name = "abs" }
-  case class Ceil[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction { val name = "ceiling" }
-  case class Floor[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction { val name = "floor" }
-  case class Sign(query: ColumnBase[_]) extends OperatorColumn[Int] with SimpleScalarFunction { val name = "sign" }
-  case class Avg[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction { val name = "avg" }
-  case class Min[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction { val name = "min" }
-  case class Max[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction { val name = "max" }
-  case class Sum[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction { val name = "sum" }
-  case class Relational(name: String, left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleBinaryOperator with ColumnOps[Boolean,Boolean]
-  case class Exists(query: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleFunction with ColumnOps[Boolean,Boolean] { val name = "exists" }
-  case class Arith[T : TypeMapper](name: String, left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[T] with SimpleBinaryOperator
-  case class IfNull(left: ColumnBase[_], right: ColumnBase[_]) extends SimpleScalarFunction { val name = "ifNull" }
+  case class Count(query: ColumnBase[_]) extends OperatorColumn[Int] {
+    val name = "count"
+    override def tables = query.tables
+  }
 
-  case class Is(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean]
-  case class CountDistinct(query: ColumnBase[_]) extends OperatorColumn[Int]
-  case class InSet[T](query: ColumnBase[_], seq: Seq[T], tm: TypeMapper[T], bind: Boolean) extends OperatorColumn[Boolean]
+  case class CountAll(query: ColumnBase[_]) extends OperatorColumn[Int] {
+    override def tables = query.tables
+  }
+
+  case class Mod[T](left: ColumnBase[_], right: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction {
+    val name = "mod"
+    override def tables = left.tables ++ right.tables
+  }
+
+  case class Abs[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction {
+    val name = "abs"
+    override def tables = query.tables
+  }
+
+  case class Ceil[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction {
+    val name = "ceiling"
+    override def tables = query.tables
+  }
+
+  case class Floor[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleScalarFunction {
+    val name = "floor"
+    override def tables = query.tables
+  }
+
+  case class Sign(query: ColumnBase[_]) extends OperatorColumn[Int] with SimpleScalarFunction {
+    val name = "sign"
+    override def tables = query.tables
+  }
+
+  case class Avg[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction {
+    val name = "avg"
+    override def tables = query.tables
+  }
+
+  case class Min[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction {
+    val name = "min"
+    override def tables = query.tables
+  }
+
+  case class Max[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction {
+    val name = "max"
+    override def tables = query.tables
+  }
+
+  case class Sum[T](query: ColumnBase[_], tm: TypeMapper[T]) extends OperatorColumn[T]()(tm) with SimpleFunction {
+    val name = "sum"
+    override def tables = query.tables
+  }
+
+  case class Relational(name: String, left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleBinaryOperator with ColumnOps[Boolean,Boolean] {
+    override def tables = left.tables ++ right.tables
+  }
+
+  case class Exists(query: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleFunction with ColumnOps[Boolean,Boolean] {
+    val name = "exists"
+    override def tables = query.tables
+  }
+
+  case class Arith[T : TypeMapper](name: String, left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[T] with SimpleBinaryOperator {
+    override def tables = left.tables ++ right.tables
+  }
+
+  /*
+  case class IfNull(left: ColumnBase[_], right: ColumnBase[_]) extends SimpleScalarFunction {
+    val name = "ifNull"
+    override def tables = left.tables ++ right.tables
+  }
+  */
+
+  case class Is(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean] {
+    override def tables = left.tables ++ right.tables
+  }
+
+  case class CountDistinct(query: ColumnBase[_]) extends OperatorColumn[Int] {
+    override def tables = query.tables
+
+  }
+
+  case class InSet[T](query: ColumnBase[_], seq: Seq[T], tm: TypeMapper[T], bind: Boolean) extends OperatorColumn[Boolean] {
+    override def tables = query.tables
+  }
 
   case class Between(left: ColumnBase[_], start: Any, end: Any) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean] {
     def nodeChildren = left :: start :: end :: Nil
+    override def tables = left.tables
   }
 
-  case class AsColumnOf[T : TypeMapper](query: ColumnBase[_], typeName: Option[String]) extends Column[T]
+  case class AsColumnOf[T : TypeMapper](query: ColumnBase[_], typeName: Option[String]) extends Column[T] {
+    override def columnName: Option[String] = query match {
+      case named: NamedColumn[_] => named.columnName
+      case _ => None
+    }
+    override def tables = query.tables
+  }
 
   // Boolean
-  case class And(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleBinaryOperator with ColumnOps[Boolean,Boolean] { val name = "and" }
-  case class Or(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleBinaryOperator with ColumnOps[Boolean,Boolean] { val name = "or" }
-  case class Not(query: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean]
+  case class And(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleBinaryOperator with ColumnOps[Boolean,Boolean] {
+    val name = "and"
+    override def tables = left.tables ++ right.tables
+  }
+  case class Or(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleBinaryOperator with ColumnOps[Boolean,Boolean] {
+    val name = "or"
+    override def tables = left.tables ++ right.tables
+  }
+  case class Not(query: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean] {
+    override def tables = query.tables
+  }
 
   // String
-  case class Length(query: ColumnBase[_]) extends OperatorColumn[Int] with SimpleScalarFunction { val name = "length" }
-  case class ToUpperCase(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction { val name = "ucase" }
-  case class ToLowerCase(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction { val name = "lcase" }
-  case class LTrim(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction { val name = "ltrim" }
-  case class RTrim(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction { val name = "rtrim" }
-  case class Regex(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean]
-  case class Concat(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction { val name = "concat" }
+  case class Length(query: ColumnBase[_]) extends OperatorColumn[Int] with SimpleScalarFunction {
+    val name = "length"
+    override def tables = query.tables
+  }
+
+  case class ToUpperCase(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction {
+    val name = "ucase"
+    override def tables = query.tables
+  }
+
+  case class ToLowerCase(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction {
+    val name = "lcase"
+    override def tables = query.tables
+  }
+
+  case class LTrim(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction {
+    val name = "ltrim"
+    override def tables = query.tables
+  }
+
+  case class RTrim(query: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction {
+    val name = "rtrim"
+    override def tables = query.tables
+  }
+
+  case class Regex(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean] {
+    override def tables = left.tables ++ right.tables
+  }
+
+  case class Concat(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[String] with SimpleScalarFunction {
+    val name = "concat"
+    override def tables = left.tables ++ right.tables
+  }
+
   class StartsWith(n: ColumnBase[_], s: String) extends Regex(n, ConstColumn(s, regexEscape(s) + "$"))
   class EndsWith(n: ColumnBase[_], s: String) extends Regex(n, ConstColumn(s, "^" + regexEscape(s)))
 

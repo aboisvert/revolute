@@ -6,6 +6,7 @@ import revolute.QueryException
 trait ColumnBase[+T] {
   type _T = T
   def columnName: Option[String] = None
+  def tables: Set[AbstractTable[_]]
 }
 
 /** Base class for columns */
@@ -25,8 +26,8 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   final def ~[U](b: Column[U]) = new Projection2[T, U](this, b)
 
   // Functions which don't need an OptionMapper
-  //def in(e: Query[Column[_]]) = ColumnOps.In(this, e)
-  //def notIn(e: Query[Column[_]]) = ColumnOps.Not(ColumnOps.In(this, e))
+  // def in(e: Query[Column[_]]) = ColumnOps.In(this, e)
+  // def notIn(e: Query[Column[_]]) = ColumnOps.Not(ColumnOps.In(this, e))
   def count = ColumnOps.Count(this)
   def isNull = ColumnOps.Is(this, ConstColumn.NULL)
   def isNotNull = ColumnOps.Not(ColumnOps.Is(this, ConstColumn.NULL))
@@ -47,6 +48,7 @@ object ConstColumn {
 
 /** A column with a constant value (i.e., literal value) */
 case class ConstColumn[T : TypeMapper](override val columnName: Option[String], value: T) extends Column[T] {
+  override def tables = Set.empty[AbstractTable[_]]
   override def toString = value match {
     case null => "ConstColumn null"
     case a: AnyRef => "ConstColumn["+a.getClass.getName+"] "+a
@@ -61,10 +63,12 @@ abstract class OperatorColumn[T : TypeMapper] extends Column[T] {
 
 /** A WrappedColumn can be used to change a column's nullValue. */
 class WrappedColumn[T: TypeMapper](parent: ColumnBase[_]) extends Column[T] {
+  override def tables = parent.tables
 }
 
 /** A column which is part of a Table. */
-class NamedColumn[T: TypeMapper](val table: TableBase[_], _columnName: String, val options: ColumnOption[T]*) extends Column[T] {
+class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[T]*) extends Column[T] {
+  override def tables: Set[AbstractTable[_]] = Set(table)
   override val columnName = Some(_columnName)
   override def toString = "NamedColumn " + columnName
 }

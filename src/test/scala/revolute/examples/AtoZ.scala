@@ -67,6 +67,19 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       }
       result should be === Seq(Seq("a", "1"))
     }
+
+    "transform tuples" in {
+      val result = sandbox run {
+        for {
+          az <- AtoZ
+          b <- az.letter ++ az.number.asColumnOf[String]
+        } yield b
+      }
+      result.size should be === 26
+      result should contain (Seq("a1"))
+      result should contain (Seq("b2"))
+      result should contain (Seq("c3"))
+    }
   }
 }
 

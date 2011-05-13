@@ -1,44 +1,50 @@
 package revolute.query
 
-import cascading.flow.FlowProcess
-import cascading.pipe.{CoGroup, Each, Pipe}
+import cascading.flow.{Flow, FlowConnector, FlowProcess}
 import cascading.operation.{Filter, FilterCall, Identity, OperationCall}
+import cascading.pipe.{CoGroup, Each, Pipe}
+import cascading.tap.Tap
 import cascading.tuple.Fields
 
 import revolute.QueryException
+import revolute.cascading._
 import revolute.util._
 
 import scala.collection._
 import scala.collection.mutable.{HashMap, HashSet}
 
-class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext)
-  extends QueryVisitor[E, Pipe]
-{
+
+object QueryBuilder {
+  implicit def queryToBuilder[T <: ColumnBase[_]](query: Query[T]) = new QueryBuilder(query)
+}
+
+class QueryBuilder[T <: ColumnBase[_]](val query: Query[T]) {
+  def outputTo(sink: Tap)(implicit context: NamingContext): Flow = {
+    val qb = new BasicQueryBuilder(query, NamingContext())
+    val pipe = qb.build()
+    val flow = new FlowConnector().connect(context.sources, sink, pipe)
+    flow
+  }
+}
+
+class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
   protected val query: Query[_] = _query
   protected var nc: NamingContext = _nc
 
-  override def query(value: E, cond: List[Column[_]], modifiers: List[QueryModifier]): Pipe = {
-    val topLevel = _query.value match {
-      case nc: NamedColumn[_] =>
-        new Pipe(nameFor(nc.table))
+  final def build(): Pipe = {
+    Console.println("build: value=%s" format _query.value)
 
-      case p: Projection[_] =>
-        val tables = p.columns.foldLeft(Set[TableBase[_]]()) { case (tables, c) =>
-          c match {
-            case n: NamedColumn[_] => tables + n.table
-            case _ => tables
-          }
-        }
-        Console.println("tables: %s" format tables)
-        if (tables.size == 1) {
-          new Pipe(nameFor(tables.head))
-        } else {
-          val pipes = tables map { t => new Pipe(nameFor(t)) }
-          new CoGroup(pipes.toArray: _*)
-        }
+    val tablePipes = {
+      val tables = _query.tables
+      if (tables.size == 1) {
+        new Pipe(tables.head.tableName)
+      } else {
+        val pipes = tables map { t => new Pipe(t.tableName) }
+        new CoGroup(pipes.toArray: _*)
+      }
     }
 
-    val pipe = new PipeBuilder(topLevel)
+    val pipe = new PipeBuilder(tablePipes)
 
     select(_query.value, pipe)
     filters(_query.cond, pipe)
@@ -46,21 +52,12 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
     pipe.pipe
   }
 
-  protected def nameFor(t: TableBase[_]) = t match {
-    case t: AbstractTable[_] => t.tableName
-    case _ => _nc.nameFor(t)
-  }
-
-  final def build(): Pipe = {
-    Console.println("build: value=%s" format _query.value)
-    _query.visit(this)
-  }
-
   protected def select(value: Any, builder: PipeBuilder) {
     Console.println("select: value=%s" format value)
     value match {
       case nc: NamedColumn[_] => builder += (new Each(_, new Fields(nc.columnName.get), new Identity(), Fields.RESULTS))
       case p: Projection[_] => builder += (new Each(_, p.fields, new Identity(), Fields.RESULTS))
+      case c: Any => innerExpr(c, builder)
     }
   }
 
@@ -92,20 +89,23 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
       pipe += (new Each(_, new Fields(c.columnName getOrElse "TODO"), new EqualFilter(v.value)))
     case ColumnOps.Is(l, ConstColumn(_, null)) => error("todo")
     case ColumnOps.Is(l, r) => error("todo")
-    case s: SimpleFunction => error("todo")
-    case s: SimpleScalarFunction => error("todo")
+    // case s: SimpleFunction => error("todo")
+    // case s: SimpleScalarFunction => error("todo")
     case ColumnOps.Between(left, start, end) => error("todo")
     case ColumnOps.CountAll(q) => error("todo")
     case ColumnOps.CountDistinct(e) => error("todo")
     case ColumnOps.Regex(l, r) => error("todo")
     case a @ ColumnOps.AsColumnOf(ch, name) => error("todo")
-    case s: SimpleBinaryOperator => error("todo")
+    // case s: SimpleBinaryOperator => error("todo")
     case query:Query[_] => error("todo")
     case c @ ConstColumn(_, v) => error("todo")
     case n: NamedColumn[_] => error("todo")
-    // case SubqueryColumn(pos, sq, _) => error("todo")
     case t: AbstractTable[_] => expr(t.*, pipe)
     case t: TableBase[_] => error("todo")
+    // Concat(NamedColumn Some(letter),AsColumnOf(NamedColumn Some(number),None))
+    case concat @ ColumnOps.Concat(left, right) =>
+      pipe += (new Each(_, new Fields(left.columnName.get, right.columnName.get), new ConcatOperation()))
+
     case _ => throw new QueryException("Don't know what to do with node \""+c+"\" in an expression")
   }
 
@@ -116,8 +116,6 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
 
   protected def table(t: Any, name: String, b: PipeBuilder): Unit = t match {
     case base: AbstractTable[_] => error("todo")
-    //case Subquery(sq: Query[_], rename) => error("todo")
-    //case Subquery(Union(all, sqs), rename) => error("todo")
     case j: Join[_,_] => error("todo")
   }
 
@@ -132,18 +130,4 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
     }
     expr(j.on, b)
   }
-}
-
-abstract class ConstFilter(val value: Any) extends Filter[Any] with java.io.Serializable {
-  def filter(x: Any): Boolean
-  def isRemove(flowProcess: FlowProcess, filterCall: FilterCall[Any]) = filter(filterCall.getArguments.get(0))
-  def isSafe = true
-  def getNumArgs = 1
-  def getFieldDeclaration = Fields.ALL
-  def prepare(flowProcess: FlowProcess, operationCall: OperationCall[Any]) = ()
-  def cleanup(flowProcess: FlowProcess, operationCall: OperationCall[Any]) = ()
-}
-
-class EqualFilter(_value: Any) extends ConstFilter(_value) {
-  override def filter(x: Any) = (x != value)
 }

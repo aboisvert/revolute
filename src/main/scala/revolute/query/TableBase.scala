@@ -8,6 +8,14 @@ abstract class AbstractTable[T](val tableName: String) extends TableBase[T] with
   def * : ColumnBase[T]
 
   override def toString = "Table " + tableName
+
+  final override def tables = Set(this)
+
+  final override def equals(other: Any) = other match {
+    case t: AbstractTable[_] => t.tableName == this.tableName
+  }
+
+  final override def hashCode = tableName.hashCode
 }
 
 object AbstractTable {

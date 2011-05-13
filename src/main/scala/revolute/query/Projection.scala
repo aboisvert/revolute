@@ -17,6 +17,8 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
     fields
   }
 
+  override def tables = columns flatMap (_.tables) toSet
+
   override def toString = "Projection" + productArity
 }
 
@@ -37,6 +39,7 @@ object Projection {
 class MappedProjection[T, P <: Product](val child: Projection[P], f: (P => T), g: (T => Option[P])) extends ColumnBase[T] {
   override def toString = "MappedProjection"
   // override def nodeDelegate = if(op eq null) Node(child) else op.nodeDelegate
+  override def tables = child.tables
 }
 
 object ~ {
@@ -67,12 +70,6 @@ final class Projection2[T1,T2](
   override val _2: Column[T2]
 ) extends Tuple2(_1,_2) with Projection[(T1,T2)] {
   def ~[U](c: Column[U]) = new Projection3(_1,_2,c)
-  /*
-  override def mapOp(f: Node => Node): this.type = new Projection2(
-    _1.mapOp(f),
-    _2.mapOp(f)
-  ).asInstanceOf[this.type]
-  */
   def <>[R](f: ((T1,T2) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2), g)
 }
@@ -84,13 +81,6 @@ final class Projection3[T1,T2,T3](
 )
 extends Tuple3(_1,_2,_3) with Projection[(T1,T2,T3)] {
   def ~[U](c: Column[U]) = new Projection4(_1,_2,_3,c)
-  /*
-  override def mapOp(f: Node => Node): this.type = new Projection3(
-    _1.mapOp(f),
-    _2.mapOp(f),
-    _3.mapOp(f)
-  ).asInstanceOf[this.type]
-  */
   def <>[R](f: ((T1,T2,T3) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2,t._3), g)
 }
