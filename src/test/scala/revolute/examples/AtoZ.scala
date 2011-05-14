@@ -23,16 +23,28 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     def * = letter ~ number
   }
 
-  implicit val context = {
-    val context = NamingContext()
-    context.tableBindings += (AtoZ -> new Hfs(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
+  object Words extends Table[(String, String)]("Words") {
+    def letter = column[String]("letter")
+    def word = column[String]("word")
+    def * = letter ~ word
+  }
+
+  def context(tables: AbstractTable[_]*) = {
+    implicit val context = NamingContext()
+    if (tables contains AtoZ)
+      context.tableBindings += (AtoZ -> new Hfs(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
+    if (tables contains Words)
+      context.tableBindings += (Words -> new Hfs(new TextDelimited(Words.*, " "), "target/test/resources/words.txt"))
     context
   }
 
   val sandbox = new Sandbox("target/test/output")
 
   "simple query" should {
+
     "map single field" in {
+      implicit val _ = context(AtoZ)
+
       val result = sandbox run {
         for (az <- AtoZ) yield az.letter
       }
@@ -42,6 +54,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "map multiple fields" in {
+      implicit val _ = context(AtoZ)
+
       val result = sandbox run {
         for (az <- AtoZ) yield az.letter ~ az.number
       }
@@ -51,6 +65,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "filter tuples using where and ===" in {
+      implicit val _ = context(AtoZ)
+
       val result = sandbox run {
         for {
           az <- AtoZ where (_.letter === "a")
@@ -60,6 +76,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "filter tuples using if and ===" in {
+      implicit val _ = context(AtoZ)
+
       val result = sandbox run {
         for {
           az <- AtoZ if (az.letter === "a")
@@ -68,17 +86,59 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should be === Seq(Seq("a", "1"))
     }
 
-    "transform tuples" in {
+    "concatenate fields and coerse field to string" in {
+      implicit val _ = context(AtoZ)
+
       val result = sandbox run {
         for {
-          az <- AtoZ
-          b <- az.letter ++ az.number.asColumnOf[String]
-        } yield b
+          concat <- AtoZ.letter ++ AtoZ.number.asColumnOf[String]
+        } yield concat
       }
       result.size should be === 26
       result should contain (Seq("a1"))
       result should contain (Seq("b2"))
       result should contain (Seq("c3"))
+    }
+
+    "filter tuples with a set" in {
+      implicit val _ = context(AtoZ)
+
+      val result = sandbox run {
+        for {
+          abc <- AtoZ.letter in Set("a", "b", "c")
+        } yield abc
+      }
+      result.size should be === 3
+      result should contain (Seq("a", "1"))
+      result should contain (Seq("b", "2"))
+      result should contain (Seq("c", "3"))
+    }
+
+    "apply multiple conditions" in {
+      implicit val _ = context(AtoZ)
+
+      val result = sandbox run {
+        for {
+          _ <- AtoZ where (_.letter in Set("a", "b"))
+          _ <- AtoZ where (_.letter in Set("a"))
+        } yield AtoZ
+      }
+      result.size should be === 1
+      result should contain (Seq("a", "1"))
+    }
+
+    "join tables" in {
+      implicit val _ = context(AtoZ, Words)
+
+      val result = sandbox run {
+        for {
+          az <- AtoZ
+          words <- Words if az.letter is words.letter
+        } yield az.letter ~ az.number ~ words.word
+      }
+      result.size should be === 8
+      result should contain (Seq("a", "1", "apple"))
+      result should contain (Seq("h", "8", "house"))
     }
   }
 }

@@ -70,12 +70,16 @@ class Query[E <: ColumnBase[_]](
   // Query[Column[_]] only
   //def asColumn(implicit ev: E <:< Column[_]): E = value
 
-  def fields: Fields = {
-    value match {
+  def fields(implicit context: NamingContext): Fields = {
+    Console.println("fields: value=%s" format value)
+
+    val f = value match {
       case nc: NamedColumn[_] => new Fields(nc.columnName.get)
       case p: Projection[_] => p.fields
       case _ => Fields.ALL
     }
+    Console.println("fields: %s" format f)
+    f
   }
 
   override def toString = "Query"

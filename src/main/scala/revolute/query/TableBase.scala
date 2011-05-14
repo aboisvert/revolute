@@ -4,8 +4,8 @@ import revolute.QueryException
 
 sealed trait TableBase[T]
 
-abstract class AbstractTable[T](val tableName: String) extends TableBase[T] with ColumnBase[T] {
-  def * : ColumnBase[T]
+abstract class AbstractTable[T <: Product](val tableName: String) extends TableBase[T] with ColumnBase[T] {
+  def * : Projection[T]
 
   override def toString = "Table " + tableName
 
@@ -19,7 +19,7 @@ abstract class AbstractTable[T](val tableName: String) extends TableBase[T] with
 }
 
 object AbstractTable {
-  def unapply[T](t: AbstractTable[T]) = Some(t.tableName)
+  // def unapply[T](t: AbstractTable[T]) = Some(t.tableName)
 }
 
 final class JoinBase[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](_left: T1, _right: T2, joinType: Join.JoinType) {

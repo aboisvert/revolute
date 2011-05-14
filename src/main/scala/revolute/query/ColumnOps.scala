@@ -59,10 +59,8 @@ trait ColumnOps[B1, P1] {
     om(Relational(">", leftOperand, e))
   def >= [P2, R](e: ColumnBase[P2])(implicit om: OptionMapper2[B1, B1, Boolean, P1, P2, R]): Column[R] =
     om(Relational(">=", leftOperand, e))
-  def inSet[R](seq: Seq[B1])(implicit om: OptionMapper2[B1, B1, Boolean, P1, P1, R], tm: BaseTypeMapper[B1]): Column[R] =
-    om(InSet(leftOperand, seq, tm, false))
-  def inSetBind[R](seq: Seq[B1])(implicit om: OptionMapper2[B1, B1, Boolean, P1, P1, R], tm: BaseTypeMapper[B1]): Column[R] =
-    om(InSet(leftOperand, seq, tm, true))
+  def in[R](set: Set[B1])(implicit om: OptionMapper2[B1, B1, Boolean, P1, P1, R], tm: BaseTypeMapper[B1]): Column[R] =
+    om(InSet(leftOperand, set, tm))
   def between[P2, P3, R](start: Column[P2], end: Column[P3])(implicit om: OptionMapper3[B1, B1, B1, Boolean, P1, P2, P3, R]): Column[R] =
     om(Between(leftOperand, start, end))
   //def ifNull[B2, P2, R](e: Column[P2])(implicit om: OptionMapper2[B1, B2, Boolean, P1, P2, R]): Column[P2] =
@@ -217,8 +215,10 @@ object ColumnOps {
 
   }
 
-  case class InSet[T](query: ColumnBase[_], seq: Seq[T], tm: TypeMapper[T], bind: Boolean) extends OperatorColumn[Boolean] {
+  case class InSet[T](query: ColumnBase[_], set: Set[T], tm: TypeMapper[T]) extends OperatorColumn[Boolean] {
     override def tables = query.tables
+    override def columnName = query.columnName
+    override def toString = "InSet(%s, %s)" format (query, set)
   }
 
   case class Between(left: ColumnBase[_], start: Any, end: Any) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean] {

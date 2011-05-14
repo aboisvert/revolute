@@ -67,12 +67,12 @@ class WrappedColumn[T: TypeMapper](parent: ColumnBase[_]) extends Column[T] {
 }
 
 /** A column which is part of a Table. */
-class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[T]*) extends Column[T] {
+class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[_]*) extends Column[T] {
   override def tables: Set[AbstractTable[_]] = Set(table)
-  override val columnName = Some(_columnName)
-  override def toString = "NamedColumn " + columnName
+  override val columnName = Some(table.tableName + "." + _columnName)
+  override def toString = "NamedColumn(%s)" format columnName.get
 }
 
 object NamedColumn {
-  def unapply[T](n: NamedColumn[T]) = Some((n.table, n.columnName, n.options))
+  // def unapply[T](n: NamedColumn[T]): Option[(AbstractTable[_], String, Seq[ColumnOption[_]])] = Some((n.table, n.columnName.get, n.options))
 }

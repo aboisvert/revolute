@@ -1,5 +1,6 @@
 package revolute.query
 
+import revolute.util.NamingContext
 import cascading.tuple.Fields
 
 sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
@@ -11,15 +12,16 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
 
   def columns = productIterator map (_.asInstanceOf[Column[_]])
 
-  def fields: Fields = {
-    val names: Array[Comparable[_]] = columns flatMap (_.columnName) toArray
+  def fields(implicit context: NamingContext): Fields = {
+    val names: Array[Comparable[_]] = columns map { c => c.columnName getOrElse (context.nameFor(c)) } toArray
     val fields: Fields = new Fields(names: _*)
+    Console.println("projection {%s} fields %s " format (columns.toList, fields))
     fields
   }
 
   override def tables = columns flatMap (_.tables) toSet
 
-  override def toString = "Projection" + productArity
+  override def toString = "Projection%d(%s)" format (productArity, productIterator.toList)
 }
 
 object Projection {
