@@ -22,10 +22,7 @@ class EqualConstFilter[T](val value: T) extends ConstFilter[T] {
 
 /** Filter tuples whose field value are not contained in given set of values */
 class InSetFilter[T](val set: Set[T]) extends ConstFilter[T] {
-  override def filter(x: Any) = {
-    Console.println("InSet: " + set)
-    !(set contains x.asInstanceOf[T])
-  }
+  override def filter(x: Any) = !(set contains x.asInstanceOf[T])
 }
 
 object IsFilter extends Filter[Any] with java.io.Serializable {

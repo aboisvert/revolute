@@ -19,7 +19,9 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
     fields
   }
 
-  override def tables = columns flatMap (_.tables) toSet
+  override def tables = {
+    Set() ++ columns flatMap (_.tables)
+  }
 
   override def toString = "Projection%d(%s)" format (productArity, productIterator.toList)
 }

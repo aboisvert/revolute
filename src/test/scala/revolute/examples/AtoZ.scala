@@ -127,7 +127,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (Seq("a", "1"))
     }
 
-    "join tables" in {
+    "join tables implicitly" in {
       implicit val _ = context(AtoZ, Words)
 
       val result = sandbox run {
@@ -135,6 +135,27 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           az <- AtoZ
           words <- Words if az.letter is words.letter
         } yield az.letter ~ az.number ~ words.word
+      }
+      result.size should be === 8
+      result should contain (Seq("a", "1", "apple"))
+      result should contain (Seq("h", "8", "house"))
+    }
+
+    "join tables using innerJoin" in {
+      implicit val _ = context(AtoZ, Words)
+
+      val result = sandbox run {
+        // fails to compile?
+        // inferred type arguments [Boolean] do not conform to method filter's type parameter bounds
+        // [T <: revolute.query.ColumnBase[_]]
+        /*
+        for {
+          Join(az, words) <- ((AtoZ innerJoin Words) on (_.letter is _.letter))
+        } yield az.letter ~ az.number ~ words.word
+        */
+        AtoZ innerJoin Words on (_.letter is _.letter) map { case Join(az, words) =>
+          az.letter ~ az.number ~ words.word
+        }
       }
       result.size should be === 8
       result should contain (Seq("a", "1", "apple"))
