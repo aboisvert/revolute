@@ -1,4 +1,0 @@
-scala.check: "org.scala-tools.testing:scalacheck_2.9.0:jar:1.9"
-scala.test: "org.scalatest:scalatest_2.9.0:jar:1.4.1"
-#scala.check.classifier: "for-scala-2.9.0.RC1"
-

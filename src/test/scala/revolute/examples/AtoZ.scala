@@ -3,11 +3,11 @@ package revolute.examples
 import cascading.tap.Hfs
 import cascading.scheme.TextDelimited
 
-import revolute._
 import revolute.query._
 import revolute.query.BasicImplicitConversions._
 import revolute.query.QueryBuilder._
 import revolute.util._
+import revolute.util.Converters._
 
 import org.scalatest.WordSpec
 import org.scalatest.matchers.ShouldMatchers
@@ -19,7 +19,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
 
   object AtoZ extends Table[(String, Int)]("A to Z") {
     def letter = column[String]("letter")
-    def number = column[Int]("number")
+    def number = column[String]("number").as[Int]
     def * = letter ~ number
   }
 
@@ -41,7 +41,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
   val sandbox = new Sandbox("target/test/output")
 
   "simple query" should {
-
     "map single field" in {
       implicit val _ = context(AtoZ)
 
@@ -72,7 +71,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           az <- AtoZ where (_.letter === "a")
         } yield az.letter ~ az.number
       }
-      result should be === Seq(Seq("a", "1"))
+      result should be === Seq(
+        Seq("a", "1")
+      )
     }
 
     "filter tuples using if and ===" in {
@@ -83,7 +84,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           az <- AtoZ if (az.letter === "a")
         } yield az.letter ~ az.number
       }
-      result should be === Seq(Seq("a", "1"))
+      result should be === Seq(
+        Seq("a", "1")
+      )
     }
 
     "concatenate fields and coerse field to string" in {
@@ -91,7 +94,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
 
       val result = sandbox run {
         for {
-          concat <- AtoZ.letter ++ AtoZ.number.asColumnOf[String]
+          concat <- AtoZ.letter ++ AtoZ.number.as[String]
         } yield concat
       }
       result.size should be === 26
@@ -105,7 +108,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
 
       val result = sandbox run {
         for {
-          abc <- AtoZ.letter in Set("a", "b", "c")
+          abc <- AtoZ where (_.letter in Set("a", "b", "c"))
         } yield abc
       }
       result.size should be === 3
@@ -125,6 +128,19 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       }
       result.size should be === 1
       result should contain (Seq("a", "1"))
+    }
+
+    "filter using multiple conditions with logical AND" in {
+      implicit val _ = context(AtoZ)
+
+      val result = sandbox run {
+        for {
+          _ <- AtoZ where { az => az.number > 5 && az.number <= 7 }
+        } yield AtoZ
+      }
+      result.size should be === 2
+      result should contain (Seq("f", "6"))
+      result should contain (Seq("g", "7"))
     }
 
     "join tables implicitly" in {

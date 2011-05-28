@@ -2,20 +2,30 @@ package revolute.query
 
 import revolute.QueryException
 
+import scala.collection._
+
 /** Common base trait for columns, tables and projections (but not unions and joins) */
-trait ColumnBase[+T] {
+@serializable trait ColumnBase[+T] {
   type _T = T
+  def arity: Int = arguments.size
+  def arguments: Set[String]
   def columnName: Option[String] = None
+  def evaluate(args: Map[String, Any]): T
   def tables: Set[AbstractTable[_]]
+}
+
+trait NotAnExpression extends ColumnBase[Nothing] {
+  override def arguments = error("not supported")
+  override def evaluate(args: Map[String, Any]): Nothing = error("not supported")
 }
 
 /** Base class for columns */
 abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   final val typeMapper = implicitly[TypeMapper[T]]
 
-  def orElse(n: =>T): Column[T] = new WrappedColumn[T](this) { }
+  // def orElse(n: =>T): Column[T] = new WrappedColumn[T](this) { }
 
-  final def orFail = orElse { throw new QueryException("Read NULL value for column " + this) }
+  // final def orFail = orElse { throw new QueryException("Read NULL value for column " + this) }
 
   def ? : Column[Option[T]] = error("todo") // new WrappedColumn[](this)(createOptionTypeMapper)
 
@@ -29,14 +39,12 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   // def in(e: Query[Column[_]]) = ColumnOps.In(this, e)
   // def notIn(e: Query[Column[_]]) = ColumnOps.Not(ColumnOps.In(this, e))
   def count = ColumnOps.Count(this)
-  def isNull = ColumnOps.Is(this, ConstColumn.NULL)
-  def isNotNull = ColumnOps.Not(ColumnOps.Is(this, ConstColumn.NULL))
+  def isNull = ColumnOps.Is(this, ConstColumn.NULL)(NullOrdering)
+  def isNotNull = ColumnOps.Not(ColumnOps.Is(this, ConstColumn.NULL)(NullOrdering))
   def countDistinct = ColumnOps.CountDistinct(this)
-  def asColumnOf[U: TypeMapper]: Column[U] = ColumnOps.AsColumnOf[U](this, None)
-  def asColumnOfType[U: TypeMapper](typeName: String): Column[U] = ColumnOps.AsColumnOf[U](this, Some(typeName))
 
-  def asc = new Ordering.Asc(By(this))
-  def desc = new Ordering.Desc(By(this))
+  def asc = new ResultOrdering.Asc(By(this))
+  def desc = new ResultOrdering.Desc(By(this))
 }
 
 object ConstColumn {
@@ -49,6 +57,8 @@ object ConstColumn {
 /** A column with a constant value (i.e., literal value) */
 case class ConstColumn[T : TypeMapper](override val columnName: Option[String], value: T) extends Column[T] {
   override def tables = Set.empty[AbstractTable[_]]
+  override val arguments = Set.empty[String]
+  override def evaluate(args: Map[String, Any]): T = value
   override def toString = value match {
     case null => "ConstColumn null"
     case a: AnyRef => "ConstColumn["+a.getClass.getName+"] "+a
@@ -57,22 +67,38 @@ case class ConstColumn[T : TypeMapper](override val columnName: Option[String], 
 }
 
 /** A column which gets created as the result of applying an operator. */
-abstract class OperatorColumn[T : TypeMapper] extends Column[T] {
-  val leftOperand: ColumnBase[_] = this
-}
-
-/** A WrappedColumn can be used to change a column's nullValue. */
-class WrappedColumn[T: TypeMapper](parent: ColumnBase[_]) extends Column[T] {
-  override def tables = parent.tables
+@serializable abstract class OperatorColumn[T : TypeMapper] extends Column[T] with ColumnOps[T, T] {
+  val leftOperand: ColumnBase[T] = this
 }
 
 /** A column which is part of a Table. */
-class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[_]*) extends Column[T] {
-  override def tables: Set[AbstractTable[_]] = Set(table)
+class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[_]*)
+  extends OperatorColumn[T] with ColumnOps[T, T]
+{
   override val columnName = Some(table.tableName + "." + _columnName)
+  override val arguments = Set(columnName.get)
+  override def evaluate(args: Map[String, Any]): T = args(columnName.get).asInstanceOf[T]
+  override def tables = Set(table)
+
+  override def equals(x: Any) = x match {
+    case other: NamedColumn[_] => this.table == other.table && this.columnName == other.columnName
+    case _ => false
+  }
+  override def hashCode = (table.hashCode * 13) + (columnName.hashCode * 17)
   override def toString = "NamedColumn(%s)" format columnName.get
 }
 
-object NamedColumn {
-  // def unapply[T](n: NamedColumn[T]): Option[(AbstractTable[_], String, Seq[ColumnOption[_]])] = Some((n.table, n.columnName.get, n.options))
+object NullOrdering extends Ordering[Any] {
+  override def compare(x1: Any, x2: Any): Int = {
+    if ((x1.asInstanceOf[AnyRef] eq null) && (x2.asInstanceOf[AnyRef] eq null)) {
+      return 0
+    }
+    if ((x1.asInstanceOf[AnyRef] ne null) && (x2.asInstanceOf[AnyRef] eq null)) {
+      return -1
+    }
+    if ((x1.asInstanceOf[AnyRef] eq null) && (x2.asInstanceOf[AnyRef] ne null)) {
+      return 1
+    }
+    return 0
+  }
 }

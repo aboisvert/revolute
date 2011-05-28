@@ -1,0 +1,8 @@
+a apple
+b beer
+c crab
+d drink
+e elephant
+f fly
+g gust
+h house

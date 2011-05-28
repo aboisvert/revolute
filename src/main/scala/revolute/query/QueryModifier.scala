@@ -7,25 +7,24 @@ object By {
 }
 class By(x: Any)
 
-sealed abstract class Ordering extends QueryModifier {
+sealed abstract class ResultOrdering extends QueryModifier {
   val by: By
-  val nullOrdering: Ordering.NullOrdering
-  def nodeChildren = by :: Nil
-  def nullsFirst: Ordering
-  def nullsLast: Ordering
+  val nullOrdering: ResultOrdering.NullOrdering
+  def nullsFirst: ResultOrdering
+  def nullsLast: ResultOrdering
 }
 
-object Ordering {
-  final case class Asc(val by: By, val nullOrdering: Ordering.NullOrdering = Ordering.NullsDefault) extends Ordering {
-    override def toString = "Ordering.Asc"
-    def nullsFirst = copy(nullOrdering = Ordering.NullsFirst)
-    def nullsLast = copy(nullOrdering = Ordering.NullsLast)
+object ResultOrdering {
+  final case class Asc(val by: By, val nullOrdering: ResultOrdering.NullOrdering = ResultOrdering.NullsDefault) extends ResultOrdering {
+    override def toString = "ResultOrdering.Asc"
+    def nullsFirst = copy(nullOrdering = ResultOrdering.NullsFirst)
+    def nullsLast = copy(nullOrdering = ResultOrdering.NullsLast)
   }
 
-  final case class Desc(val by: By, val nullOrdering: Ordering.NullOrdering = Ordering.NullsDefault) extends Ordering {
-    override def toString = "Ordering.Desc"
-    def nullsFirst = copy(nullOrdering = Ordering.NullsFirst)
-    def nullsLast = copy(nullOrdering = Ordering.NullsLast)
+  final case class Desc(val by: By, val nullOrdering: ResultOrdering.NullOrdering = ResultOrdering.NullsDefault) extends ResultOrdering {
+    override def toString = "ResultOrdering.Desc"
+    def nullsFirst = copy(nullOrdering = ResultOrdering.NullsFirst)
+    def nullsLast = copy(nullOrdering = ResultOrdering.NullsLast)
   }
 
   sealed trait NullOrdering
@@ -35,6 +34,5 @@ object Ordering {
 }
 
 final case class Grouping(val by: By) extends QueryModifier {
-  def nodeChildren = by :: Nil
   override def toString = "Grouping"
 }

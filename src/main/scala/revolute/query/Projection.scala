@@ -1,14 +1,13 @@
 package revolute.query
 
-import revolute.util.NamingContext
 import cascading.tuple.Fields
+import revolute.util.NamingContext
+import scala.collection._
 
 sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
   type V = T
 
-  def nodeChildren = (0 until productArity) map { i => productElement(i) } toList
-
-  def <>[R](f: (T => R), g: (R => Option[T])): MappedProjection[R,T] = new MappedProjection(this, f, g)
+  // def <>[R](f: (T => R), g: (R => Option[T])): MappedProjection[R,T] = new MappedProjection(this, f, g)
 
   def columns = productIterator map (_.asInstanceOf[Column[_]])
 
@@ -18,6 +17,17 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
     Console.println("projection {%s} fields %s " format (columns.toList, fields))
     fields
   }
+
+  def sourceFields: Fields = {
+    val names: Array[Comparable[_]] = columns flatMap (_.arguments.iterator) toArray
+    val fields: Fields = new Fields(names: _*)
+    Console.println("projection {%s} source fields %s " format (columns.toList, fields))
+    fields
+  }
+
+  override def arguments = (columns.toSeq map (_.arguments) flatten) toSet
+
+  override def evaluate(args: Map[String, Any]): T = error("todo")
 
   override def tables = {
     Set() ++ columns flatMap (_.tables)
@@ -40,11 +50,14 @@ object Projection {
   */
 }
 
+/*
 class MappedProjection[T, P <: Product](val child: Projection[P], f: (P => T), g: (T => Option[P])) extends ColumnBase[T] {
   override def toString = "MappedProjection"
-  // override def nodeDelegate = if(op eq null) Node(child) else op.nodeDelegate
+  override def arguments = child.arguments
+  override def evaluate(args: Map[String, Any]): T = error("todo")
   override def tables = child.tables
 }
+*/
 
 object ~ {
   def unapply[T1,T2](p: Projection2[T1,T2]) =
@@ -74,8 +87,10 @@ final class Projection2[T1,T2](
   override val _2: Column[T2]
 ) extends Tuple2(_1,_2) with Projection[(T1,T2)] {
   def ~[U](c: Column[U]) = new Projection3(_1,_2,c)
+  /*
   def <>[R](f: ((T1,T2) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2), g)
+  */
 }
 
 final class Projection3[T1,T2,T3](
@@ -85,8 +100,10 @@ final class Projection3[T1,T2,T3](
 )
 extends Tuple3(_1,_2,_3) with Projection[(T1,T2,T3)] {
   def ~[U](c: Column[U]) = new Projection4(_1,_2,_3,c)
+  /*
   def <>[R](f: ((T1,T2,T3) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2,t._3), g)
+  */
 }
 
 final class Projection4[T1,T2,T3,T4](
@@ -105,8 +122,10 @@ extends Tuple4(_1,_2,_3,_4) with Projection[(T1,T2,T3,T4)] {
     _4.mapOp(f)
   ).asInstanceOf[this.type]
   */
+  /*
   def <>[R](f: ((T1,T2,T3,T4) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2,t._3,t._4), g)
+    */
 }
 
 /*

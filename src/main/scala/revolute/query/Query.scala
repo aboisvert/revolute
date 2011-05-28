@@ -8,8 +8,6 @@ import scala.reflect.Manifest
 import cascading.tuple.Fields
 
 object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
-  // def apply[E](value: ColumnBase[E]): Query[E] = new Query(value, Nil, Nil)
-  // def apply[E: TypeMapper](value: E) = new Query(ConstColumn("foo", value), Nil, Nil)
 }
 
 /** Query monad: contains AST for query's projection, accumulated restrictions and other modifiers. */
@@ -17,9 +15,7 @@ class Query[E <: ColumnBase[_]](
   val value: E,
   val cond: List[Column[_]],
   val modifiers: List[QueryModifier]
-) extends ColumnBase[E#_T] {
-
-  // def visit[X](vis: QueryVisitor[E, X]) = vis.query(value, cond, modifiers)
+) extends ColumnBase[E#_T] with NotAnExpression {
 
   def flatMap[F <: ColumnBase[_]](f: E => Query[F]): Query[F] = {
     val q = f(value)
@@ -40,9 +36,9 @@ class Query[E <: ColumnBase[_]](
   def groupBy(by: Column[_]*) =
     new Query[E](value, cond, modifiers ::: by.view.map(c => new Grouping(By(c))).toList)
 
-  def orderBy(by: Ordering*) = new Query[E](value, cond, modifiers ::: by.toList)
+  def orderBy(by: ResultOrdering*) = new Query[E](value, cond, modifiers ::: by.toList)
 
-  def exists = ColumnOps.Exists(map(_ => ConstColumn("exists", 1)))
+  //def exists = ColumnOps.Exists(map(_ => ConstColumn("exists", 1)))
 
   def typedModifiers[T <: QueryModifier](implicit m: ClassManifest[T]) =
     modifiers.filter(m.erasure.isInstance(_)).asInstanceOf[List[T]]
@@ -67,18 +63,16 @@ class Query[E <: ColumnBase[_]](
 
   // def sub(implicit ev: E <:< ColumnBase[_]) = wrap(this)
 
-  // Query[Column[_]] only
-  //def asColumn(implicit ev: E <:< Column[_]): E = value
-
   def fields(implicit context: NamingContext): Fields = {
-    Console.println("fields: value=%s" format value)
+    Console.println("Query.fields on %s" format value)
+
 
     val f = value match {
       case nc: NamedColumn[_] => new Fields(nc.columnName.get)
       case p: Projection[_] => p.fields
       case _ => Fields.ALL
     }
-    Console.println("fields: %s" format f)
+    Console.println("Query.fields: %s" format f)
     f
   }
 
@@ -101,17 +95,6 @@ object CanBeQueryCondition {
       if(value) l else new ConstColumn(Some("BooleanCanBeQueryCondition"), false)(TypeMapper.BooleanTypeMapper) :: Nil
   }
 }
-
-/*
-case class Subquery(query: Node, rename: Boolean) extends Node {
-  def nodeChildren = query :: Nil
-}
-
-case class SubqueryColumn(pos: Int, subquery: Subquery, typeMapper: TypeMapper[_]) extends Node {
-  def nodeChildren = subquery :: Nil
-  override def toString = "SubqueryColumn c"+pos
-}
-*/
 
 case class Union(all: Boolean, queries: List[Query[_]]) {
   override def toString = if (all) "Union all" else "Union"
