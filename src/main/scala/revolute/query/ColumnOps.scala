@@ -115,23 +115,24 @@ trait ColumnOps[B1, P1] {
 
   def matches(e: String)(implicit ev: P1 =:= String): Column[Boolean] =
     Regex(leftOperand.asInstanceOf[ColumnBase[String]], e)
-  /*
-  def regex[P2, R](e: Column[P2])(implicit om: OptionMapper2[String, String, Boolean, P1, P2, R]): Column[R] =
-    Regex(leftOperand, e)
-  def regex[P2, R](e: Column[P2], esc: Char)(implicit om: OptionMapper2[String, String, Boolean, P1, P2, R]): Column[R] =
-    Regex(leftOperand, e)
-  */
+
   def ++(e: Column[P1])(implicit ev: P1 =:= String): Column[String] =
     Concat(leftOperand.asInstanceOf[ColumnBase[String]], e.asInstanceOf[ColumnBase[String]])
+
   /*
   def startsWith[R](s: String)(implicit om: OptionMapper2[String, String, Boolean, P1, P1, R]): Column[R] =
     om(new StartsWith(leftOperand, s))
   def endsWith[R](s: String)(implicit om: OptionMapper2[String, String, Boolean, P1, P1, R]): Column[R] =
     om(new EndsWith(leftOperand, s))
+  */
+
   def toUpperCase(implicit ev: P1 =:= String): Column[String] =
     ToUpperCase(leftOperand.asInstanceOf[ColumnBase[String]])
+
   def toLowerCase(implicit ev: P1 =:= String): Column[String] =
     ToLowerCase(leftOperand.asInstanceOf[ColumnBase[String]])
+
+  /*
   def ltrim[R](implicit om: OptionMapper2[String, String, String, P1, P1, R]): Column[R] =
     om(LTrim(leftOperand))
   def rtrim[R](implicit om: OptionMapper2[String, String, String, P1, P1, R]): Column[R] =
@@ -221,7 +222,6 @@ object ColumnOps {
       val leftValue = left.evaluate(args)
       conv(leftValue)
     }
-
   }
 
   case class LessThan[O: scala.math.Ordering](val left: ColumnBase[O], val right: ColumnBase[O])
@@ -264,12 +264,6 @@ object ColumnOps {
       implicitly[Ordering[O]] gteq (l, r)
     }
   }
-
-  /*
-  case class Relational(name: String, left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with BooleanExpression with ColumnOps[Boolean,Boolean] {
-    override def tables = left.tables ++ right.tables
-  }
-  */
 
   /*
   case class Exists(query: ColumnBase[_]) extends OperatorColumn[Boolean] with SimpleFunction with ColumnOps[Boolean,Boolean] {
@@ -350,6 +344,7 @@ object ColumnOps {
     }
     override def tables = left.tables ++ right.tables
   }
+
   case class Not(left: ColumnBase[Boolean]) extends OperatorColumn[Boolean] with UnaryOperator[Boolean, Boolean] with ColumnOps[Boolean,Boolean] {
     override def evaluate(args: Map[String, Any]): Boolean = {
       !left.evaluate(args)

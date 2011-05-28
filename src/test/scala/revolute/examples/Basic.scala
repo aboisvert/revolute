@@ -30,7 +30,7 @@ object ExampleQueries {
     _ <- Query.orderBy((p1.age - p2.age) desc)
   } yield p1.name ~ p2.name
   */
-  
+
   /* How many people do people follow? */
   val x = for {
     p <- Persons
