@@ -1,10 +1,13 @@
 package revolute.examples
 
 import cascading.flow.{Flow, FlowConnector}
+import cascading.flow.local.LocalFlowConnector
 import cascading.operation.Identity
 import cascading.pipe.{Pipe, Each}
-import cascading.scheme.TextDelimited
-import cascading.tap.Hfs
+import cascading.scheme.local.TextDelimited
+import cascading.tap.{Tap, SinkMode}
+import cascading.tap.local.FileTap
+import cascading.tap.hadoop.Hfs
 import cascading.tuple.{Fields, Tuple}
 
 import java.io.File
@@ -16,6 +19,7 @@ import revolute._
 import revolute.query._
 
 import scala.io.Source
+import scala.sys.error
 
 @org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class CascadingSuite extends WordSpec with ShouldMatchers {
@@ -29,13 +33,13 @@ class CascadingSuite extends WordSpec with ShouldMatchers {
     "run a simple assembly" in {
       if (!new File(inputFile).exists()) error("data file not found: " + inputFile)
 
-      val source = new Hfs(new TextDelimited(fields, " "), inputFile)
-      val sink = new Hfs(new TextDelimited(fields, "\t"), outputDir + "a-z", true)
+      val source = new FileTap(new TextDelimited(fields, " "), inputFile)
+      val sink = new FileTap(new TextDelimited(fields, "\t"), outputDir + "a-z", SinkMode.REPLACE)
 
       var pipe = new Pipe("identity")
       pipe = new Each( pipe, new Identity(fields))
 
-      val flow = new FlowConnector().connect(source, sink, pipe)
+      val flow = new LocalFlowConnector().connect(source, sink, pipe)
       //flow.writeDOT(outputDir + "basic.dot")
 
       flow.start()

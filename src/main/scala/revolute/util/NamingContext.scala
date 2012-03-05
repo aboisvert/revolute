@@ -1,8 +1,11 @@
 package revolute.util
 
-import cascading.tap.Tap
+import cascading.flow.{FlowConnector, FlowProcess}
 import revolute.query.Table
+import revolute.util.Compat.Tap
+
 import scala.collection._
+import scala.collection.JavaConversions
 
 trait NamingContext {
   def nameFor(t: Any): String
@@ -13,8 +16,9 @@ trait NamingContext {
 
   val tableBindings = mutable.Map[Table[_], Tap]()
 
-  def sources = {
-    scala.collection.JavaConversions.asJavaMap(tableBindings map { case (table, tap) => (table.tableName, tap) })
+  def sources: java.util.Map[String, Tap] = {
+    val taps: Map[String, Tap] = tableBindings map { case (table, tap) => (table.tableName, tap: Tap) } toMap;
+    JavaConversions.mapAsJavaMap(taps)
   }
 }
 

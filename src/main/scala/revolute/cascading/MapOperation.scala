@@ -10,7 +10,7 @@ import scala.collection._
 
 class MapOperation(val projection: Projection[_], val fields: Fields) extends BaseOperation[Any](projection.columns.size, fields) with Function[Any] {
 
-  override def operate(flowProcess: FlowProcess, functionCall: FunctionCall[Any]) {
+  override def operate(flowProcess: FlowProcess[_], functionCall: FunctionCall[Any]) {
     val result = new Tuple()
     val args = arguments(functionCall)
     for (c <- projection.columns) {
@@ -34,7 +34,7 @@ class MapSingleOperation(val expr: ColumnBase[_], val outputName: String)
   extends BaseOperation[Any](1, new Fields(outputName)) with Function[Any]
 {
 
-  override def operate(flowProcess: FlowProcess, functionCall: FunctionCall[Any]) {
+  override def operate(flowProcess: FlowProcess[_], functionCall: FunctionCall[Any]) {
     val result = new Tuple()
     val args = arguments(functionCall)
     val value = expr.evaluate(args)

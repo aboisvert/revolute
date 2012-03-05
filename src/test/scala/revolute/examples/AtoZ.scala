@@ -1,7 +1,8 @@
 package revolute.examples
 
-import cascading.tap.Hfs
-import cascading.scheme.TextDelimited
+import cascading.tap.SinkMode
+import cascading.tap.local.FileTap
+import cascading.scheme.local.TextDelimited
 
 import revolute.query._
 import revolute.query.BasicImplicitConversions._
@@ -32,9 +33,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
   def context(tables: AbstractTable[_]*) = {
     implicit val context = NamingContext()
     if (tables contains AtoZ)
-      context.tableBindings += (AtoZ -> new Hfs(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
+      context.tableBindings += (AtoZ -> new FileTap(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
     if (tables contains Words)
-      context.tableBindings += (Words -> new Hfs(new TextDelimited(Words.*, " "), "target/test/resources/words.txt"))
+      context.tableBindings += (Words -> new FileTap(new TextDelimited(Words.*, " "), "target/test/resources/words.txt"))
     context
   }
 
@@ -190,13 +191,13 @@ class Sandbox(val outputDir: String) {
   }
 
   def run[T <: ColumnBase[_]](query: Query[T])(implicit context: NamingContext): Seq[Seq[String]] = {
+    implicit val flowConnector = new cascading.flow.local.LocalFlowConnector()
     val output = outputFile(outputDir)
-
-    val flow = query.outputTo(new Hfs(new TextDelimited(query.fields, "\t"), output, true))
+    val flow = query.outputTo(new FileTap(new TextDelimited(query.fields, "\t"), output, SinkMode.REPLACE))
     flow.start()
     flow.complete()
 
-    val lines = Source.fromFile(output + "/part-00000").getLines.toSeq map (_.split("\t").toSeq)
+    val lines = Source.fromFile(output).getLines.toSeq map (_.split("\t").toSeq)
     lines
   }
 }

@@ -10,13 +10,18 @@ import scala.collection._
 
 /** A cascading filter against a constant value */
 trait ConstFilter[T] extends Filter[T] with java.io.Serializable {
+
   def filter(x: T): Boolean
-  def isRemove(flowProcess: FlowProcess, filterCall: FilterCall[T]) = filter(filterCall.getArguments.get(0).asInstanceOf[T])
-  def isSafe = true
-  def getNumArgs = 1
-  def getFieldDeclaration = Fields.ALL
-  def prepare(flowProcess: FlowProcess, operationCall: OperationCall[T]) {}
-  def cleanup(flowProcess: FlowProcess, operationCall: OperationCall[T]) {}
+
+  override def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[T]) = {
+    filter(filterCall.getArguments.get(0).asInstanceOf[T])
+  }
+  override def isSafe = true
+  override def getNumArgs = 1
+  override def getFieldDeclaration = Fields.ALL
+  override def prepare(flowProcess: FlowProcess[_], operationCall: OperationCall[T]) {}
+  override def flush(flowProcess: FlowProcess[_], operationCall: OperationCall[T]) {}
+  override def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[T]) {}
 }
 
 /** Filter tuples whose field does not equal given constant value */
@@ -46,21 +51,22 @@ class InSetFilter[T](val set: Set[T]) extends ConstFilter[T] {
 }
 
 object IsFilter extends Filter[Any] with java.io.Serializable {
-  def isRemove(flowProcess: FlowProcess, filterCall: FilterCall[Any]) = {
+  def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[Any]) = {
     filterCall.getArguments.get(0) != filterCall.getArguments.get(1)
   }
   def isSafe = true
   def getNumArgs = 2
   def getFieldDeclaration = Fields.ALL
-  def prepare(flowProcess: FlowProcess, operationCall: OperationCall[Any]) {}
-  def cleanup(flowProcess: FlowProcess, operationCall: OperationCall[Any]) {}
+  def prepare(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
+  def flush(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
+  def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
 }
 
 object WithArguments {
 }
 
 class ExpressionFilter(val expr: ColumnBase[Boolean]) extends Filter[Any] with java.io.Serializable {
-  def isRemove(flowProcess: FlowProcess, filterCall: FilterCall[Any]) = {
+  override def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[Any]) = {
     !expr.evaluate(arguments(filterCall))
   }
 
@@ -73,9 +79,10 @@ class ExpressionFilter(val expr: ColumnBase[Boolean]) extends Filter[Any] with j
     map
   }
 
-  def isSafe = true
-  def getNumArgs = expr.arity
-  def getFieldDeclaration = Fields.ALL
-  def prepare(flowProcess: FlowProcess, operationCall: OperationCall[Any]) {}
-  def cleanup(flowProcess: FlowProcess, operationCall: OperationCall[Any]) {}
+  override def isSafe = true
+  override def getNumArgs = expr.arity
+  override def getFieldDeclaration = Fields.ALL
+  override def prepare(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
+  override def flush(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
+  override def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
 }

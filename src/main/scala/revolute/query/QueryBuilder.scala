@@ -1,24 +1,26 @@
 package revolute.query
 
-import cascading.flow.{Flow, FlowConnector}
+import cascading.flow.{Flow, FlowConnector, FlowProcess}
 import cascading.operation.Identity
 import cascading.pipe.{CoGroup, Each, Pipe}
-import cascading.tap.Tap
 import cascading.tuple.Fields
 
 import revolute.QueryException
 import revolute.cascading._
 import revolute.util._
+import revolute.util.Compat.Tap
+
+import scala.sys.error
 
 object QueryBuilder {
   implicit def queryToBuilder[T <: ColumnBase[_]](query: Query[T]) = new QueryBuilder(query)
 }
 
 class QueryBuilder[T <: ColumnBase[_]](val query: Query[T]) {
-  def outputTo(sink: Tap)(implicit context: NamingContext): Flow = {
+  def outputTo(sink: Tap)(implicit context: NamingContext, flowConnector: FlowConnector): Flow[_] = {
     val qb = new BasicQueryBuilder(query, NamingContext())
     val pipe = qb.build()
-    val flow = new FlowConnector().connect(context.sources, sink, pipe)
+    val flow = flowConnector.connect(context.sources, sink, pipe)
     flow
   }
 }

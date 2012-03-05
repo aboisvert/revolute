@@ -1,6 +1,6 @@
 package revolute.util
 
-@serializable trait Converter[From, To] extends Function1[From, To]
+trait Converter[From, To] extends Function1[From, To]
 
 object Converters {
   implicit val stringToInt = new Converter[String, Int] {

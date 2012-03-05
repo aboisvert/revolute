@@ -10,7 +10,7 @@ class ConcatOperation() extends BaseOperation[String](2, new Fields("concat")) w
   private val zero = new java.lang.Integer(0)
   private val one = new java.lang.Integer(1)
 
-  override def operate(flowProcess: FlowProcess, functionCall: FunctionCall[String]) {
+  override def operate(flowProcess: FlowProcess[_], functionCall: FunctionCall[String]) {
     val args = functionCall.getArguments();
     val result = new Tuple()
     val concat = args.getString(zero) + args.getString(one)

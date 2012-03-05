@@ -3,9 +3,10 @@ package revolute.query
 import revolute.QueryException
 
 import scala.collection._
+import scala.sys.error
 
 /** Common base trait for columns, tables and projections (but not unions and joins) */
-@serializable trait ColumnBase[+T] {
+trait ColumnBase[+T] extends Serializable {
   type _T = T
   def arity: Int = arguments.size
   def arguments: Set[String]
@@ -67,7 +68,7 @@ case class ConstColumn[T : TypeMapper](override val columnName: Option[String], 
 }
 
 /** A column which gets created as the result of applying an operator. */
-@serializable abstract class OperatorColumn[T : TypeMapper] extends Column[T] with ColumnOps[T, T] {
+abstract class OperatorColumn[T : TypeMapper] extends Column[T] with ColumnOps[T, T] {
   val leftOperand: ColumnBase[T] = this
 }
 

@@ -3,6 +3,7 @@ package revolute.query
 import cascading.tuple.Fields
 import revolute.util.NamingContext
 import scala.collection._
+import scala.sys.error
 
 sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
   type V = T
