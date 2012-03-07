@@ -22,6 +22,15 @@ class Query[E <: ColumnBase[_]](
     new Query(q.value, cond ::: q.cond, modifiers ::: q.modifiers)
   }
 
+  /*
+  def flatMap2[F](f: E => Option[F]): Query[F] = {
+    val q = f(value)
+    val col = new Column[F] {}
+    new Query(col, cond ::: q.cond, modifiers ::: q.modifiers)
+    error("todo")
+  }
+   */
+
   def map[F <: ColumnBase[_]](f: E => F): Query[F] = flatMap(v => new Query(f(v), Nil, Nil))
 
   def >>[F <: ColumnBase[F]](q: Query[F]): Query[F] = flatMap(_ => q)
@@ -92,7 +101,7 @@ object CanBeQueryCondition {
   }
   implicit object BooleanCanBeQueryCondition extends CanBeQueryCondition[Boolean] {
     def apply(value: Boolean, l: List[Column[_]]): List[Column[_]] =
-      if(value) l else new ConstColumn(Some("BooleanCanBeQueryCondition"), false)(TypeMapper.BooleanTypeMapper) :: Nil
+      if (value) l else new ConstColumn(Some("BooleanCanBeQueryCondition"), false)(TypeMapper.BooleanTypeMapper) :: Nil
   }
 }
 

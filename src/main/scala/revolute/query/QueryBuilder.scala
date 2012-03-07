@@ -8,7 +8,7 @@ import cascading.tuple.Fields
 import revolute.QueryException
 import revolute.cascading._
 import revolute.util._
-import revolute.util.Compat.Tap
+import revolute.util.Compat._
 
 import scala.sys.error
 
@@ -58,7 +58,7 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
         builder += (new Each(_, new Fields(nc.columnName.get), new Identity(), Fields.RESULTS))
 
       case p: Projection[_] =>
-        Console.println("select: projection; source fields=%s" format p.sourceFields)
+        Console.println("select: projection; source fields=%s -> fields=%s" format (p.sourceFields, p.fields))
         if (p.columns.forall(_.isInstanceOf[NamedColumn[_]])) {
           // all named columns, just use identity transform
           builder += (new Each(_, p.sourceFields, new Identity(), Fields.RESULTS))
@@ -109,7 +109,7 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
     c match {
       case expr: ColumnBase[_] if (!(expr.isInstanceOf[NotAnExpression])) =>
         Console.println("map expression fields: " + expr.arguments)
-        val args: Array[Comparable[_]] = expr.arguments.iterator.toArray
+        val args: Array[Comparable[_]] = expr.arguments.iterator.toArray.distinct
         pipe += (new Each(_, new Fields(args: _*), new MapSingleOperation(expr, nameFor(expr)), Fields.RESULTS))
 
       case _ => throw new QueryException("Don't know what to do with map node \""+c+"\" in an expression")

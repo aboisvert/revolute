@@ -67,16 +67,7 @@ object WithArguments {
 
 class ExpressionFilter(val expr: ColumnBase[Boolean]) extends Filter[Any] with java.io.Serializable {
   override def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[Any]) = {
-    !expr.evaluate(arguments(filterCall))
-  }
-
-  private def arguments(filterCall: FilterCall[_]): Map[String, Any] = {
-    val map = mutable.Map.empty[String, Any]
-    expr.arguments.zipWithIndex foreach { case (name, i) =>
-      val pos = filterCall.getArgumentFields.getPos(name)
-      map(name) = filterCall.getArguments.get(pos)
-    }
-    map
+    !expr.evaluate(filterCall.getArguments)
   }
 
   override def isSafe = true

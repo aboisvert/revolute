@@ -1,6 +1,7 @@
 package revolute.query
 
-import cascading.tuple.Fields
+import cascading.tuple.{Fields, TupleEntry}
+import revolute.util.Compat._
 import revolute.util.NamingContext
 import scala.collection._
 import scala.sys.error
@@ -20,7 +21,7 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
   }
 
   def sourceFields: Fields = {
-    val names: Array[Comparable[_]] = columns flatMap (_.arguments.iterator) toArray
+    val names: Array[String] = (columns flatMap (_.arguments.iterator) toArray).distinct
     val fields: Fields = new Fields(names: _*)
     Console.println("projection {%s} source fields %s " format (columns.toList, fields))
     fields
@@ -28,7 +29,7 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
 
   override def arguments = (columns.toSeq map (_.arguments) flatten) toSet
 
-  override def evaluate(args: Map[String, Any]): T = error("todo")
+  override def evaluate(args: TupleEntry): T = error("todo")
 
   override def tables = {
     Set() ++ columns flatMap (_.tables)
@@ -55,7 +56,7 @@ object Projection {
 class MappedProjection[T, P <: Product](val child: Projection[P], f: (P => T), g: (T => Option[P])) extends ColumnBase[T] {
   override def toString = "MappedProjection"
   override def arguments = child.arguments
-  override def evaluate(args: Map[String, Any]): T = error("todo")
+  override def evaluate(args: TupleEntry): T = error("todo")
   override def tables = child.tables
 }
 */
@@ -81,6 +82,12 @@ object ~ {
   def unapply[T1,T2,T3,T4,T5,T6,T7,T8,T9,T10](p: Projection10[T1,T2,T3,T4,T5,T6,T7,T8,T9,T10]) =
     Some((new Projection9(p._1,p._2,p._3,p._4,p._5,p._6,p._7,p._8,p._9), p._10))
   */
+}
+
+final class Projection1[T1](
+  override val _1: Column[T1]
+) extends Tuple1(_1) with Projection[Tuple1[T1]] {
+  def ~[U](c: Column[U]) = new Projection2(_1, c)
 }
 
 final class Projection2[T1,T2](

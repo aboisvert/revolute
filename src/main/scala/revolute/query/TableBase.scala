@@ -16,6 +16,9 @@ abstract class AbstractTable[T <: Product](val tableName: String) extends TableB
   }
 
   final override def hashCode = tableName.hashCode
+
+  implicit def columnToProjection[T](c: Column[T]): Projection[Tuple1[T]] = new Projection1[T](c)
+
 }
 
 final class JoinBase[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](_left: T1, _right: T2, joinType: Join.JoinType) {

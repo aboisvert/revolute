@@ -178,6 +178,23 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (Seq("a", "1", "apple"))
       result should contain (Seq("h", "8", "house"))
     }
+
+    "allow mapping values using an inlined closure" in {
+      implicit val _ = context(AtoZ)
+
+      val result = sandbox run {
+        val query = for {
+          abc <- AtoZ
+          vowel <- abc.letter mapValue { letter => if ("aeiouy" contains letter) "yes" else "no" }
+        } yield abc.letter ~ vowel
+        query
+      }
+      result.size should be === 26
+      result should contain (Seq("a", "yes"))
+      result should contain (Seq("b", "no"))
+      result.filter(_(1) == "yes").size should be === 6
+    }
+
   }
 }
 
@@ -190,7 +207,7 @@ class Sandbox(val outputDir: String) {
     file + "-" + outputNumber
   }
 
-  def run[T <: ColumnBase[_]](query: Query[T])(implicit context: NamingContext): Seq[Seq[String]] = {
+  def run[T](query: Query[_ <: ColumnBase[T]])(implicit context: NamingContext): Seq[Seq[String]] = {
     implicit val flowConnector = new cascading.flow.local.LocalFlowConnector()
     val output = outputFile(outputDir)
     val flow = query.outputTo(new FileTap(new TextDelimited(query.fields, "\t"), output, SinkMode.REPLACE))

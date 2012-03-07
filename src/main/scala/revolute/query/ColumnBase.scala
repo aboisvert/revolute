@@ -1,6 +1,7 @@
 package revolute.query
 
 import revolute.QueryException
+import cascading.tuple.TupleEntry
 
 import scala.collection._
 import scala.sys.error
@@ -11,13 +12,14 @@ trait ColumnBase[+T] extends Serializable {
   def arity: Int = arguments.size
   def arguments: Set[String]
   def columnName: Option[String] = None
-  def evaluate(args: Map[String, Any]): T
+  def evaluate(args: TupleEntry): T
+  def operationType: OperationType = OperationType.PureMapper
   def tables: Set[AbstractTable[_]]
 }
 
 trait NotAnExpression extends ColumnBase[Nothing] {
   override def arguments = error("not supported")
-  override def evaluate(args: Map[String, Any]): Nothing = error("not supported")
+  override def evaluate(args: TupleEntry): Nothing = error("not supported")
 }
 
 /** Base class for columns */
@@ -32,7 +34,7 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
 
   def getOr[U](n: => U)(implicit ev: Option[U] =:= T): Column[U] = error("todo") // new WrappedColumn[U](this)(new BaseTypeMapper[U] {}) { }
 
-  def get[U](implicit ev: Option[U] =:= T): Column[U] = getOr[U] { throw new QueryException("Read NULL value for column "+this) }
+  // def get[U](implicit ev: Option[U] =:= T): Column[U] = getOr[U] { throw new QueryException("Read NULL value for column "+this) }
 
   final def ~[U](b: Column[U]) = new Projection2[T, U](this, b)
 
@@ -59,7 +61,7 @@ object ConstColumn {
 case class ConstColumn[T : TypeMapper](override val columnName: Option[String], value: T) extends Column[T] {
   override def tables = Set.empty[AbstractTable[_]]
   override val arguments = Set.empty[String]
-  override def evaluate(args: Map[String, Any]): T = value
+  override def evaluate(args: TupleEntry): T = value
   override def toString = value match {
     case null => "ConstColumn null"
     case a: AnyRef => "ConstColumn["+a.getClass.getName+"] "+a
@@ -78,7 +80,7 @@ class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: Strin
 {
   override val columnName = Some(table.tableName + "." + _columnName)
   override val arguments = Set(columnName.get)
-  override def evaluate(args: Map[String, Any]): T = args(columnName.get).asInstanceOf[T]
+  override def evaluate(args: TupleEntry): T = args.get(columnName.get).asInstanceOf[T]
   override def tables = Set(table)
 
   override def equals(x: Any) = x match {
