@@ -195,13 +195,32 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result.filter(_(1) == "yes").size should be === 6
     }
 
-    "allow filtering/flatMap using an inlined closure" in {
+    "allow mapping + filtering using mapOption" in {
       implicit val _ = context(AtoZ)
 
       val result = sandbox run {
         val query = for {
           abc <- AtoZ
           vowel <- abc.letter mapOption { letter => if ("aeiouy" contains letter) Some("yes") else None }
+        } yield abc.letter ~ vowel
+        query
+      }
+      result.size should be === 6
+      result should contain (Seq("a", "yes"))
+      result should contain (Seq("e", "yes"))
+      result should contain (Seq("i", "yes"))
+      result should contain (Seq("o", "yes"))
+      result should contain (Seq("u", "yes"))
+      result should contain (Seq("y", "yes"))
+    }
+
+    "allow mapping + filtering using mapPartial" in {
+      implicit val _ = context(AtoZ)
+
+      val result = sandbox run {
+        val query = for {
+          abc <- AtoZ
+          vowel <- abc.letter mapPartial { case l if ("aeiouy" contains l) => "yes" }
         } yield abc.letter ~ vowel
         query
       }
