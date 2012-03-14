@@ -15,21 +15,12 @@ class Query[E <: ColumnBase[_]](
   val value: E,
   val cond: List[Column[_]],
   val modifiers: List[QueryModifier]
-) extends ColumnBase[E#_T] with NotAnExpression {
+) extends ColumnBase[E#_T] {
 
   def flatMap[F <: ColumnBase[_]](f: E => Query[F]): Query[F] = {
     val q = f(value)
     new Query(q.value, cond ::: q.cond, modifiers ::: q.modifiers)
   }
-
-  /*
-  def flatMap2[F](f: E => Option[F]): Query[F] = {
-    val q = f(value)
-    val col = new Column[F] {}
-    new Query(col, cond ::: q.cond, modifiers ::: q.modifiers)
-    error("todo")
-  }
-   */
 
   def map[F <: ColumnBase[_]](f: E => F): Query[F] = flatMap(v => new Query(f(v), Nil, Nil))
 

@@ -7,24 +7,21 @@ import scala.collection._
 import scala.sys.error
 
 /** Common base trait for columns, tables and projections (but not unions and joins) */
-trait ColumnBase[+T] extends Serializable {
+trait ColumnBase[T] extends Serializable {
   type _T = T
-  def arity: Int = arguments.size
-  def arguments: Set[String]
   def columnName: Option[String] = None
-  def evaluate(args: TupleEntry): T
-  def operationType: OperationType = OperationType.PureMapper
   def tables: Set[AbstractTable[_]]
-}
-
-trait NotAnExpression extends ColumnBase[Nothing] {
-  override def arguments = error("not supported")
-  override def evaluate(args: TupleEntry): Nothing = error("not supported")
 }
 
 /** Base class for columns */
 abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   final val typeMapper = implicitly[TypeMapper[T]]
+
+  def arity: Int = arguments.size
+  def arguments: Set[String]
+
+  def operationType: OperationType
+  def evaluate(args: TupleEntry): Any
 
   // def orElse(n: =>T): Column[T] = new WrappedColumn[T](this) { }
 
@@ -36,14 +33,14 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
 
   // def get[U](implicit ev: Option[U] =:= T): Column[U] = getOr[U] { throw new QueryException("Read NULL value for column "+this) }
 
-  final def ~[U](b: Column[U]) = new Projection2[T, U](this, b)
+  final def ~[U](b: ColumnBase[U]) = new Projection2[T, U](this, b)
 
   // Functions which don't need an OptionMapper
   // def in(e: Query[Column[_]]) = ColumnOps.In(this, e)
   // def notIn(e: Query[Column[_]]) = ColumnOps.Not(ColumnOps.In(this, e))
   def count = ColumnOps.Count(this)
-  def isNull = ColumnOps.Is(this, ConstColumn.NULL)(NullOrdering)
-  def isNotNull = ColumnOps.Not(ColumnOps.Is(this, ConstColumn.NULL)(NullOrdering))
+  def isNull = ColumnOps.Is(this.asInstanceOf[Column[AnyRef]], ConstColumn.NULL)(NullOrdering)
+  def isNotNull = ColumnOps.Not(ColumnOps.Is(this.asInstanceOf[Column[AnyRef]], ConstColumn.NULL)(NullOrdering))
   def countDistinct = ColumnOps.CountDistinct(this)
 
   def asc = new ResultOrdering.Asc(By(this))
@@ -61,6 +58,7 @@ object ConstColumn {
 case class ConstColumn[T : TypeMapper](override val columnName: Option[String], value: T) extends Column[T] {
   override def tables = Set.empty[AbstractTable[_]]
   override val arguments = Set.empty[String]
+  override def operationType = OperationType.PureMapper
   override def evaluate(args: TupleEntry): T = value
   override def toString = value match {
     case null => "ConstColumn null"
@@ -71,13 +69,15 @@ case class ConstColumn[T : TypeMapper](override val columnName: Option[String], 
 
 /** A column which gets created as the result of applying an operator. */
 abstract class OperatorColumn[T : TypeMapper] extends Column[T] with ColumnOps[T, T] {
-  val leftOperand: ColumnBase[T] = this
+  val leftOperand: Column[T]
 }
 
 /** A column which is part of a Table. */
 class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[_]*)
   extends OperatorColumn[T] with ColumnOps[T, T]
 {
+  override val leftOperand = this
+  override def operationType = OperationType.PureMapper
   override val columnName = Some(table.tableName + "." + _columnName)
   override val arguments = Set(columnName.get)
   override def evaluate(args: TupleEntry): T = args.get(columnName.get).asInstanceOf[T]
@@ -91,8 +91,8 @@ class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: Strin
   override def toString = "NamedColumn(%s)" format columnName.get
 }
 
-object NullOrdering extends Ordering[Any] {
-  override def compare(x1: Any, x2: Any): Int = {
+object NullOrdering extends Ordering[AnyRef] {
+  override def compare(x1: AnyRef, x2: AnyRef): Int = {
     if ((x1.asInstanceOf[AnyRef] eq null) && (x2.asInstanceOf[AnyRef] eq null)) {
       return 0
     }

@@ -4,7 +4,7 @@ import cascading.flow.FlowProcess
 import cascading.operation.{Filter, FilterCall, OperationCall}
 import cascading.tuple.Fields
 
-import revolute.query.ColumnBase
+import revolute.query.{ColumnBase, Column}
 
 import scala.collection._
 
@@ -65,9 +65,9 @@ object IsFilter extends Filter[Any] with java.io.Serializable {
 object WithArguments {
 }
 
-class ExpressionFilter(val expr: ColumnBase[Boolean]) extends Filter[Any] with java.io.Serializable {
+class ExpressionFilter(val expr: Column[Boolean]) extends Filter[Any] with java.io.Serializable {
   override def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[Any]) = {
-    !expr.evaluate(filterCall.getArguments)
+    ! (expr.evaluate(filterCall.getArguments).asInstanceOf[Boolean])
   }
 
   override def isSafe = true

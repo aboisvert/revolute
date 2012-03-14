@@ -1,9 +1,8 @@
 package revolute.query
 
 import cascading.tuple.TupleEntry
-import revolute.util.Converter
+import revolute.util.{Converter, Combinations}
 import scala.collection._
-import sun.security.pkcs11.P11TlsKeyMaterialGenerator
 
 abstract class ColumnOption[+T]
 
@@ -31,8 +30,9 @@ trait SimpleScalarFunction
 
 /* B1 => Column's type, P1 is sometimes Option[B1] */
 trait ColumnOps[B1, P1] {
-  protected val leftOperand: ColumnBase[P1]
   import ColumnOps._
+
+  protected val leftOperand: Column[P1]
 
   def is(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     Is(leftOperand, e)
@@ -46,23 +46,25 @@ trait ColumnOps[B1, P1] {
   def =!=(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     Not(Is(leftOperand, e))
 
-  def <(e: ColumnBase[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
+  def <(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     LessThan(leftOperand, e)
 
-  def <=(e: ColumnBase[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
+  def <=(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
    LessThanOrEqual(leftOperand, e)
 
-  def >(e: ColumnBase[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
+  def >(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     GreaterThan(leftOperand, e)
 
-  def >=(e: ColumnBase[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
+  def >=(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     GreaterThanOrEqual(leftOperand, e)
 
-  def in(set: Set[P1])(implicit o: scala.math.Ordering[P1]): Column[Boolean] =
+  def in(set: Set[P1])(implicit o: scala.math.Ordering[P1]): OperatorColumn[Boolean] =
     InSet[P1](leftOperand, set)
 
-  def between(start: Column[P1], end: Column[P1])(implicit o: Ordering[P1]): Column[Boolean] =
+  /*
+  def between(start: Column[P1], end: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     Between[P1](leftOperand, start, end)
+  */
 
   //def ifNull[B2, P2, R](e: Column[P2])(implicit om: OptionMapper2[B1, B2, Boolean, P1, P2, R]): Column[P2] =
   //  IfNull(leftOperand, e)
@@ -98,33 +100,33 @@ trait ColumnOps[B1, P1] {
     om(Sum(leftOperand, tm))
   */
 
-  def as[T2](implicit conv: Converter[P1, T2], tm: TypeMapper[T2]): Column[T2]  = new As[P1, T2](leftOperand)
+  def as[T2](implicit conv: Converter[P1, T2], tm: TypeMapper[T2]): OperatorColumn[T2]  = new As[P1, T2](leftOperand)
 
-  def mapValue[T2](f: P1 => T2)(implicit tm: TypeMapper[T2]) = new MapOp[P1, T2](leftOperand, f)
+  def mapValue[T2](f: P1 => T2)(implicit tm: TypeMapper[T2]) = new MapValue[P1, T2](leftOperand, f)
 
-  // def flatMap[T2](f: P1 => Option[T2])(implicit tm: TypeMapper[Option[T2]]) = new FlatMapOp[P1, T2](leftOperand, f)
+  def mapOption[T2](f: P1 => Option[T2])(implicit tm: TypeMapper[T2]) = new MapOption[P1, T2](leftOperand, f)
 
   // Boolean only
-  def &&(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): Column[Boolean] =
-    And(leftOperand.asInstanceOf[ColumnBase[Boolean]], b.asInstanceOf[ColumnBase[Boolean]])
+  def &&(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): OperatorColumn[Boolean] =
+    And(leftOperand.asInstanceOf[Column[Boolean]], b.asInstanceOf[Column[Boolean]])
 
-  def ||(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): Column[Boolean] =
-    Or(leftOperand.asInstanceOf[ColumnBase[Boolean]], b.asInstanceOf[ColumnBase[Boolean]])
+  def ||(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): OperatorColumn[Boolean] =
+    Or(leftOperand.asInstanceOf[Column[Boolean]], b.asInstanceOf[Column[Boolean]])
 
-  def unary_!(implicit ev: P1 =:= Boolean): Column[Boolean] =
-    Not(leftOperand.asInstanceOf[ColumnBase[Boolean]])
+  def unary_!(implicit ev: P1 =:= Boolean): OperatorColumn[Boolean] =
+    Not(leftOperand.asInstanceOf[Column[Boolean]])
 
   // String only
-  def length(implicit ev: P1 =:= String): Column[Int] =
-    Length(leftOperand.asInstanceOf[ColumnBase[String]])
+  def length(implicit ev: P1 =:= String): OperatorColumn[Int] =
+    Length(leftOperand.asInstanceOf[Column[String]])
 
-  def matches(e: String)(implicit ev: P1 =:= String): Column[Boolean] =
-    Regex(leftOperand.asInstanceOf[ColumnBase[String]], e)
+  def matches(e: String)(implicit ev: P1 =:= String): OperatorColumn[Boolean] =
+    Regex(leftOperand.asInstanceOf[Column[String]], e)
 
-  def ?(f: P1 => Boolean): Column[Boolean] = Satisfies(leftOperand, f)
+  def ?(f: P1 => Boolean): OperatorColumn[Boolean] = Satisfies(leftOperand, f)
 
-  def ++(e: Column[P1])(implicit ev: P1 =:= String): Column[String] =
-    Concat(leftOperand.asInstanceOf[ColumnBase[String]], e.asInstanceOf[ColumnBase[String]])
+  def ++(e: Column[P1])(implicit ev: P1 =:= String): OperatorColumn[String] =
+    Concat(leftOperand.asInstanceOf[Column[String]], e.asInstanceOf[Column[String]])
 
   /*
   def startsWith[R](s: String)(implicit om: OptionMapper2[String, String, Boolean, P1, P1, R]): Column[R] =
@@ -133,11 +135,11 @@ trait ColumnOps[B1, P1] {
     om(new EndsWith(leftOperand, s))
   */
 
-  def toUpperCase(implicit ev: P1 =:= String): Column[String] =
-    ToUpperCase(leftOperand.asInstanceOf[ColumnBase[String]])
+  def toUpperCase(implicit ev: P1 =:= String): OperatorColumn[String] =
+    ToUpperCase(leftOperand.asInstanceOf[Column[String]])
 
-  def toLowerCase(implicit ev: P1 =:= String): Column[String] =
-    ToLowerCase(leftOperand.asInstanceOf[ColumnBase[String]])
+  def toLowerCase(implicit ev: P1 =:= String): OperatorColumn[String] =
+    ToLowerCase(leftOperand.asInstanceOf[Column[String]])
 
   /*
   def ltrim[R](implicit om: OptionMapper2[String, String, String, P1, P1, R]): Column[R] =
@@ -161,13 +163,15 @@ object OperationType {
 }
 
 object ColumnOps {
+  import OperationType._
+
   // case class In(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean]
-  case class Count(query: ColumnBase[_]) extends OperatorColumn[Int] with NotAnExpression {
+  case class Count(query: ColumnBase[_]) extends ColumnBase[Int] {
     val name = "count"
     override def tables = query.tables
   }
 
-  case class CountAll(query: ColumnBase[_]) extends OperatorColumn[Int] with NotAnExpression  {
+  case class CountAll(query: ColumnBase[_]) extends ColumnBase[Int] {
     override def tables = query.tables
   }
 
@@ -218,89 +222,188 @@ object ColumnOps {
   }
   */
 
-  trait UnaryOperator[L, O] extends ColumnBase[O] {
-    val left: ColumnBase[L]
-    override def arguments = left.arguments
-    override def tables = left.tables
-  }
+  // L == Left
+  // I == Intermediate Value, e.g. O, Option[O], Seq[O]
+  // O == Output
+  trait UnaryOperator[L, I, O] extends OperatorColumn[O] {
+    val left: Column[L]
 
+    override val leftOperand: Column[O] = this
+    override def operationType: OperationType = PureMapper
 
-  trait BinaryOperator[L, R, O] extends ColumnBase[O] {
-    val left: ColumnBase[L]
-    val right: ColumnBase[R]
+    def apply(leftValue: L): I
 
-    override def arguments = left.arguments ++ right.arguments
-    override def tables = left.tables ++ right.tables
-  }
+    override final def evaluate(args: TupleEntry): Any = {
+      left.operationType match {
+        case PureMapper =>
+          val leftResult = left.evaluate(args).asInstanceOf[L]
+          apply(leftResult)
 
-  case class As[T1, T2](val left: ColumnBase[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
-    extends OperatorColumn[T2] with UnaryOperator[T1, T2]
-  {
-    override def evaluate(args: TupleEntry): T2 = {
-      val leftValue = left.evaluate(args)
-      conv(leftValue)
+        case NullableMapper =>
+          val leftResult = left.evaluate(args).asInstanceOf[L]
+          if (leftResult == null) null
+          else apply(leftResult)
+
+        case OptionMapper =>
+          val leftResult = left.evaluate(args).asInstanceOf[Option[L]]
+          if (leftResult == null) null
+          else leftResult match {
+            case Some(value) => apply(value)
+            case None        => null
+          }
+
+        case SeqMapper =>
+          val leftResult = left.evaluate(args).asInstanceOf[Seq[L]]
+          if (leftResult == null) null
+          else operationType match {
+            case PureMapper | NullableMapper | OptionMapper => leftResult map apply
+            case SeqMapper =>
+              val r = leftResult map apply
+              if (r == null) null
+              else r.asInstanceOf[Seq[Seq[I]]].filter(_ != null).flatten
+          }
+      }
     }
+
+    final override def arguments = left.arguments
+    final override def tables = left.tables
   }
 
-  case class MapOp[T1, T2](val left: ColumnBase[T1], f: T1 => T2)(implicit tm: TypeMapper[T2])
-    extends OperatorColumn[T2] with UnaryOperator[T1, T2]
-  {
-    override def evaluate(args: TupleEntry): T2 = {
-      val leftValue = left.evaluate(args)
-      f(leftValue)
-    }
+  abstract class BinaryOperator[L, R, T, O: TypeMapper] extends OperatorColumn[O] {
+    val left:  Column[L]
+    val right: Column[R]
+
+    override val leftOperand: Column[O] = this
+    override def operationType: OperationType = PureMapper
+
+    def apply(leftValue: L, rightValue: R): T
+
+    override final def evaluate(args: TupleEntry): Any = {
+      val leftResult = left.evaluate(args)
+
+      // handle zeros left
+      if      (left.operationType != PureMapper   && leftResult == null)      null
+      else if (left.operationType == OptionMapper && leftResult == None)      null
+      else if (left.operationType == SeqMapper    && leftResult == Seq.empty) null
+      else {
+        // no zeros on the left, evaluate right
+        val rightResult = right.evaluate(args)
+
+        // handle zeros on right
+        if      (right.operationType != PureMapper   && rightResult == null)      null
+        else if (right.operationType == OptionMapper && rightResult == None)      null
+        else if (right.operationType == SeqMapper    && rightResult == Seq.empty) null
+
+        // ok, we have to evaluate this expression
+        else (left.operationType, right.operationType) match {
+          case (PureMapper | NullableMapper, PureMapper | NullableMapper) =>
+            apply(leftResult.asInstanceOf[L], rightResult.asInstanceOf[R])
+
+          case (PureMapper | NullableMapper, OptionMapper) =>
+            apply(leftResult.asInstanceOf[L], rightResult.asInstanceOf[Option[R]].get)
+
+          case (PureMapper | NullableMapper, SeqMapper) =>
+            val leftValue = leftResult.asInstanceOf[L]
+            val result = rightResult.asInstanceOf[Seq[R]] map { rightValue => apply(leftValue, rightValue) }
+            operationType match {
+              case PureMapper | NullableMapper | OptionMapper => result
+              case SeqMapper =>
+                if (result == null) null
+                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
+            }
+
+          case (SeqMapper, PureMapper | NullableMapper) =>
+            val rightValue = rightResult.asInstanceOf[R]
+            val result = leftResult.asInstanceOf[Seq[L]] map { leftValue => apply(leftValue, rightValue) }
+            operationType match {
+              case PureMapper | NullableMapper | OptionMapper => result
+              case SeqMapper =>
+                if (result == null) null
+                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
+            }
+
+          case (OptionMapper, PureMapper | NullableMapper) =>
+            apply(leftResult.asInstanceOf[Option[L]].get, rightResult.asInstanceOf[R])
+
+          case (OptionMapper, OptionMapper) =>
+            apply(leftResult.asInstanceOf[Option[L]].get, rightResult.asInstanceOf[Option[R]].get)
+
+          case (OptionMapper, SeqMapper) =>
+            val leftValue = leftResult.asInstanceOf[Option[L]].get
+            val result = rightResult.asInstanceOf[Seq[R]] map { rightValue => apply(leftValue, rightValue) }
+            operationType match {
+              case PureMapper | NullableMapper | OptionMapper => result
+              case SeqMapper =>
+                if (result == null) null
+                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
+            }
+
+          case (SeqMapper, OptionMapper) =>
+            val leftValue = leftResult.asInstanceOf[Option[L]].get
+            val result = rightResult.asInstanceOf[Seq[R]] map { rightValue => apply(leftValue, rightValue) }
+            operationType match {
+              case PureMapper | NullableMapper | OptionMapper => result
+              case SeqMapper =>
+                if (result == null) null
+                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
+            }
+
+          case (SeqMapper, SeqMapper) =>
+            val leftValues  = leftResult.asInstanceOf[Seq[L]].toIndexedSeq
+            val rightValues = rightResult.asInstanceOf[Seq[R]].toIndexedSeq
+            val combinations = Combinations.combinations(IndexedSeq(leftValues, rightValues)).toSeq
+            combinations map { tuple => apply(tuple(0).asInstanceOf[L], tuple(1).asInstanceOf[R]) }
+        } // else
+
+      } // else-if
+    } // evaluate
+
+    final override def arguments = left.arguments ++ right.arguments
+    final override def tables = left.tables ++ right.tables
   }
 
-  /*
-  case class FlatMapOp[T1, T2](val left: ColumnBase[T1], f: T1 => Option[T2])(implicit tm: TypeMapper[Option[T2]])
-    extends OperatorColumn[T2] with UnaryOperator[T1, T2]
+  case class As[T1, T2](val left: Column[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
+    extends OperatorColumn[T2] with UnaryOperator[T1, T2, T2]
   {
-    override def evaluate(args: TupleEntry): T2 = {
-      val leftValue = left.evaluate(args)
-      f(leftValue)
-    }
-  }
-  */
-
-  case class LessThan[O: scala.math.Ordering](val left: ColumnBase[O], val right: ColumnBase[O])
-    extends OperatorColumn[Boolean] with BinaryOperator[O, O, Boolean]
-  {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val l = left.evaluate(args)
-      val r = right.evaluate(args)
-      implicitly[Ordering[O]] lt (l, r)
-    }
+    override def apply(leftValue: T1): T2 = conv(leftValue)
+    override def toString = "As(%s, type=%s)" format (left.columnName getOrElse "N/A", tm)
   }
 
-  case class LessThanOrEqual[O: scala.math.Ordering](val left: ColumnBase[O], val right: ColumnBase[O])
-    extends OperatorColumn[Boolean] with BinaryOperator[O, O, Boolean]
+  case class MapValue[T1, T2](val left: Column[T1], f: T1 => T2)(implicit tm: TypeMapper[T2])
+    extends OperatorColumn[T2] with UnaryOperator[T1, T2, T2]
   {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val l = left.evaluate(args)
-      val r = right.evaluate(args)
-      implicitly[Ordering[O]] lteq (l, r)
-    }
-    override def tables = left.tables ++ right.tables
+    override def apply(leftValue: T1): T2 = f(leftValue)
   }
 
-  case class GreaterThan[O: scala.math.Ordering](val left: ColumnBase[O], val right: ColumnBase[O])
-    extends OperatorColumn[Boolean] with BinaryOperator[O, O, Boolean]
+  case class MapOption[T1, T2](val left: Column[T1], f: T1 => Option[T2])(implicit tm: TypeMapper[T2])
+    extends OperatorColumn[T2] with UnaryOperator[T1, Option[T2], T2]
   {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val l = left.evaluate(args)
-      val r = right.evaluate(args)
-      implicitly[Ordering[O]] gt (l, r)
-    }
+    override def apply(leftValue: T1) = f(leftValue)
+    override def operationType = OptionMapper
   }
 
-  case class GreaterThanOrEqual[O: scala.math.Ordering](val left: ColumnBase[O], val right: ColumnBase[O])
-    extends OperatorColumn[Boolean] with BinaryOperator[O, O, Boolean]
+  case class LessThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+    extends BinaryOperator[O, O, Boolean, Boolean]
   {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val l = left.evaluate(args)
-      val r = right.evaluate(args)
-      implicitly[Ordering[O]] gteq (l, r)
-    }
+    override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] lt (leftValue, rightValue)
+  }
+
+  case class LessThanOrEqual[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+    extends BinaryOperator[O, O, Boolean, Boolean]
+  {
+    override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] lteq (leftValue, rightValue)
+  }
+
+  case class GreaterThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+    extends BinaryOperator[O, O, Boolean, Boolean]
+  {
+    override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] gt (leftValue, rightValue)
+  }
+
+  case class GreaterThanOrEqual[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+    extends BinaryOperator[O, O, Boolean, Boolean]
+  {
+    override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] gteq (leftValue, rightValue)
   }
 
   /*
@@ -323,93 +426,82 @@ object ColumnOps {
   }
   */
 
-  case class Is[O: scala.math.Ordering](left: ColumnBase[O], right: ColumnBase[O])
-    extends OperatorColumn[Boolean] with BinaryOperator[O, O, Boolean] with ColumnOps[Boolean,Boolean]
+  case class Is[O: scala.math.Ordering](left: Column[O], right: Column[O])
+    extends BinaryOperator[O, O, Boolean, Boolean] with ColumnOps[Boolean,Boolean]
   {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val l = left.evaluate(args)
-      val r = right.evaluate(args)
-      implicitly[Ordering[O]] equiv (l, r)
-    }
-    override def tables = left.tables ++ right.tables
+    override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] equiv (leftValue, rightValue)
   }
 
-  case class CountDistinct(query: ColumnBase[_]) extends OperatorColumn[Int] with NotAnExpression {
+  case class CountDistinct(query: ColumnBase[_]) extends ColumnBase[Int] {
     override def tables = query.tables
-
   }
 
-  case class InSet[T](query: ColumnBase[T], set: Set[T]) extends OperatorColumn[Boolean] {
-    override def arguments = query.arguments
-    override def columnName = query.columnName
-    override def evaluate(args: TupleEntry): Boolean = {
-      set contains query.evaluate(args)
-    }
-    override def tables = query.tables
-    override def toString = "InSet(%s, %s)" format (query, set)
+  case class InSet[T](override val left: Column[T], set: Set[T])
+    extends UnaryOperator[T, Boolean, Boolean]
+  {
+    override def apply(leftValue: T): Boolean = set contains leftValue
+    override def toString = "InSet(%s, %s)" format (left, set)
   }
 
+  /*
   case class Between[O: Ordering](left: ColumnBase[O], start: ColumnBase[O], end: ColumnBase[O])
-    extends OperatorColumn[Boolean] with UnaryOperator[O, Boolean] with ColumnOps[Boolean, Boolean]
+    extends OperatorColumn[Boolean] with UnaryOperator[O, Boolean, Boolean] with ColumnOps[Boolean, Boolean]
   {
+    override def apply(leftValue: T1): T2 = {
+      ((implicitly[Ordering[O]] gteq (leftValue, startValue)) && (implicitly[Ordering[O]] lteq (leftValue, endValue)))
+    }
+
+    }
     override def evaluate(args: TupleEntry): Boolean = {
       val leftValue = left.evaluate(args)
       val startValue = start.evaluate(args)
       val endValue = end.evaluate(args)
       ((implicitly[Ordering[O]] gteq (leftValue, startValue)) && (implicitly[Ordering[O]] lteq (leftValue, endValue)))
     }
-    override def tables = left.tables
   }
+    */
 
   // Boolean
-  case class And(val left: ColumnBase[Boolean], val right: ColumnBase[Boolean]) extends OperatorColumn[Boolean] {
-    override def arguments = (left.arguments ++ right.arguments)
-    override def evaluate(args: TupleEntry): Boolean = {
-      if (left.evaluate(args) == false) {
-        return false // short circuit
-      }
-      right.evaluate(args)
-    }
-    override def tables = left.tables ++ right.tables
+  case class And(val left: Column[Boolean], val right: Column[Boolean])
+    extends BinaryOperator[Boolean, Boolean, Boolean, Boolean]
+  {
+    // TODO: would be nice to short-circuit if leftValue is false
+    override def apply(leftValue: Boolean, rightValue: Boolean) = leftValue && rightValue
   }
 
-  case class Or(left: ColumnBase[Boolean], right: ColumnBase[Boolean]) extends OperatorColumn[Boolean] {
-    override def arguments = (left.arguments ++ right.arguments)
-    override def evaluate(args: TupleEntry): Boolean = {
-      if (left.evaluate(args) == true) {
-        return true // short circuit
-      }
-      right.evaluate(args)
-    }
-    override def tables = left.tables ++ right.tables
+  case class Or(left: Column[Boolean], right: Column[Boolean])
+    extends BinaryOperator[Boolean, Boolean, Boolean, Boolean]
+  {
+    // TODO: would be nice to short-circuit if leftValue is true
+    override def apply(leftValue: Boolean, rightValue: Boolean) = leftValue || rightValue
   }
 
-  case class Not(left: ColumnBase[Boolean]) extends OperatorColumn[Boolean] with UnaryOperator[Boolean, Boolean] with ColumnOps[Boolean,Boolean] {
-    override def evaluate(args: TupleEntry): Boolean = {
-      !left.evaluate(args)
-    }
+  case class Not(left: Column[Boolean])
+    extends UnaryOperator[Boolean, Boolean, Boolean]
+  {
+    override def apply(leftValue: Boolean): Boolean = !leftValue
   }
 
   // String
-  case class Length(left: ColumnBase[String]) extends OperatorColumn[Int] with UnaryOperator[String, Int] with SimpleScalarFunction {
+  case class Length(left: Column[String])
+    extends UnaryOperator[String, Int, Int] with SimpleScalarFunction
+  {
     val name = "length"
-    override def evaluate(args: TupleEntry): Int = {
-      left.evaluate(args).length
-    }
+    override def apply(leftValue: String): Int = leftValue.length
   }
 
-  case class ToUpperCase(left: ColumnBase[String]) extends OperatorColumn[String] with UnaryOperator[String, String] with SimpleScalarFunction {
+  case class ToUpperCase(left: Column[String])
+    extends UnaryOperator[String, String, String] with SimpleScalarFunction
+  {
     val name = "ucase"
-    override def evaluate(args: TupleEntry): String = {
-      left.evaluate(args).toUpperCase
-    }
+    override def apply(leftValue: String): String = leftValue.toUpperCase
   }
 
-  case class ToLowerCase(left: ColumnBase[String]) extends OperatorColumn[String] with UnaryOperator[String, String] with SimpleScalarFunction {
+  case class ToLowerCase(left: Column[String])
+    extends UnaryOperator[String, String, String] with SimpleScalarFunction
+  {
     val name = "lcase"
-    override def evaluate(args: TupleEntry): String = {
-      left.evaluate(args).toUpperCase
-    }
+    override def apply(leftValue: String): String = leftValue.toLowerCase
   }
 
   /*
@@ -424,33 +516,23 @@ object ColumnOps {
   }
   */
 
-  case class Regex(left: ColumnBase[String], s: String)
-    extends OperatorColumn[Boolean] with UnaryOperator[String, Boolean] with ColumnOps[Boolean,Boolean]
+  case class Regex(left: Column[String], s: String)
+    extends OperatorColumn[Boolean] with UnaryOperator[String, Boolean, Boolean] with ColumnOps[Boolean,Boolean]
   {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val leftValue = left.evaluate(args)
-      leftValue.matches(s)
-    }
+    override def apply(leftValue: String) = leftValue.matches(s)
   }
 
-  case class Satisfies[T](left: ColumnBase[T], f: T => Boolean)
-    extends OperatorColumn[Boolean] with UnaryOperator[T, Boolean] with ColumnOps[Boolean,Boolean]
+  case class Satisfies[T](left: Column[T], f: T => Boolean)
+    extends OperatorColumn[Boolean] with UnaryOperator[T, Boolean, Boolean] with ColumnOps[Boolean,Boolean]
   {
-    override def evaluate(args: TupleEntry): Boolean = {
-      val leftValue = left.evaluate(args)
-      f(leftValue)
-    }
+    override def apply(leftValue: T) = f(leftValue)
   }
 
-  case class Concat(left: ColumnBase[String], right: ColumnBase[String])
-    extends OperatorColumn[String] with BinaryOperator[String, String, String] with SimpleScalarFunction
+  case class Concat(left: Column[String], right: Column[String])
+    extends BinaryOperator[String, String, String, String] with SimpleScalarFunction
   {
     val name = "concat"
-    override def evaluate(args: TupleEntry): String = {
-      val leftValue = left.evaluate(args)
-      val rightValue = right.evaluate(args)
-      leftValue + rightValue
-    }
+    override def apply(leftValue: String, rightValue: String) = leftValue + rightValue
   }
 
   /*

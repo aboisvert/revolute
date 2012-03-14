@@ -2,7 +2,7 @@ package revolute.query
 
 import scala.collection._
 
-sealed trait TableBase[T <: Product] extends ColumnBase[T] with NotAnExpression with java.io.Serializable
+sealed trait TableBase[T <: Product] extends ColumnBase[T] with java.io.Serializable
 
 abstract class AbstractTable[T <: Product](val tableName: String) extends TableBase[T] {
   def * : Projection[T]
@@ -32,7 +32,7 @@ final class Join[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](
   val right: T2,
   val joinType: Join.JoinType,
   val on: ColumnBase[_]
-) extends TableBase[Nothing] with NotAnExpression {
+) extends TableBase[Nothing] {
   override def tables = left.tables ++ right.tables
   override def toString = "Join(%s, %s)" format (left, right)
 }

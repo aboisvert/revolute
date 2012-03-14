@@ -4,7 +4,7 @@ import cascading.flow.FlowProcess
 import cascading.operation.{BaseOperation, Function, FunctionCall}
 import cascading.tuple.{Fields, Tuple}
 
-import revolute.query.{ColumnBase, Projection}
+import revolute.query.{ColumnBase, Column, Projection}
 import revolute.query.OperationType._
 import revolute.util.Combinations
 
@@ -21,13 +21,13 @@ object OutputType {
 }
 
 class FlatMapOperation(val projection: Projection[_], val fields: Fields)
-  extends BaseOperation[Any](projection.columns.size, fields) with Function[Any]
+  extends BaseOperation[Any](projection.sourceFields.size, fields) with Function[Any]
 {
   import OutputType._
 
   lazy val outputType = {
     val operationTypes = projection.columns map (_.operationType)
-    if (operationTypes exists (_ == SeqMapper)) OneToZeroOrOne else OneToMany
+    if (operationTypes exists (_ == SeqMapper)) OneToMany else OneToZeroOrOne
   }
 
   override def operate(flowProcess: FlowProcess[_], functionCall: FunctionCall[Any]) {
@@ -38,7 +38,12 @@ class FlatMapOperation(val projection: Projection[_], val fields: Fields)
         val result = new Tuple()
         for (c <- projection.columns) {
           val value = c.evaluate(args)
-          result.add(value)
+          c.operationType match {
+            case PureMapper     => result.add(value)
+            case NullableMapper => if (value != null) result.add(value) else return
+            case OptionMapper   => value match { case Some(value) => result.add(value); case None => return }
+            case unexpected     => sys.error("Unexpected operationType: " + unexpected)
+          }
         }
         functionCall.getOutputCollector().add(result)
 
@@ -51,20 +56,19 @@ class FlatMapOperation(val projection: Projection[_], val fields: Fields)
           c.operationType match {
             case PureMapper     => entries += IndexedSeq(value)
             case NullableMapper => if (value != null) entries += IndexedSeq(value) else return
-            case OptionMapper   => if (value.asInstanceOf[Option[_]].isDefined) entries += IndexedSeq(value) else return
-            case SeqMapper      => if (value.asInstanceOf[Seq[_]].nonEmpty) entries += value.asInstanceOf[Seq[_]].toIndexedSeq else return
-          }
-          val combinations = Combinations.combinations(entries)
-          while (combinations.hasNext) {
-            val combination = combinations.next
-            val result = new Tuple()
-            combination foreach { value => result.add(value) }
+            case OptionMapper   => value match { case Some(value) => entries += IndexedSeq(value); case None => return }
+            case SeqMapper      => value match { case seq: Seq[_] if seq.nonEmpty => entries += seq.toIndexedSeq; case _ => return }
           }
         }
-
+        val combinations = Combinations.combinations(entries)
+        while (combinations.hasNext) {
+          val combination = combinations.next
+          val result = new Tuple()
+          combination foreach { value => result.add(value) }
+          functionCall.getOutputCollector().add(result)
+        }
     }
   }
-
 }
 
 class MapOperation(val projection: Projection[_], val fields: Fields)
@@ -76,14 +80,13 @@ class MapOperation(val projection: Projection[_], val fields: Fields)
     val args = functionCall.getArguments
     for (c <- projection.columns) {
       val value = c.evaluate(args)
-      Console.println("add %s -> %s" format (c, value))
       result.add(value)
     }
     functionCall.getOutputCollector().add(result)
   }
 }
 
-class MapSingleOperation(val expr: ColumnBase[_], val outputName: String)
+class MapSingleOperation(val expr: Column[_], val outputName: String)
   extends BaseOperation[Any](1, new Fields(outputName)) with Function[Any]
 {
   override def operate(flowProcess: FlowProcess[_], functionCall: FunctionCall[Any]) {

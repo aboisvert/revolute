@@ -16,6 +16,8 @@ You need Apache Buildr 1.4.x or higher.
 
 See examples and tests under ```src/test/scala```.
 
+And in the [documentation](https://github.com/aboisvert/revolute/wiki).
+
 ### Dependencies ###
 
 * Hadoop 0.20.1+

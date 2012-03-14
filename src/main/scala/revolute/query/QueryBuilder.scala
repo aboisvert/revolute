@@ -51,6 +51,8 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
   }
 
   protected def select(value: Any, builder: PipeBuilder) {
+    import OperationType._
+
     Console.println("select: value=%s" format value)
     value match {
       case nc: NamedColumn[_] =>
@@ -62,9 +64,11 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
         if (p.columns.forall(_.isInstanceOf[NamedColumn[_]])) {
           // all named columns, just use identity transform
           builder += (new Each(_, p.sourceFields, new Identity(), Fields.RESULTS))
-        } else {
+        } /* else if (p.operationType == PureMapper) {
           // at least one column is a transformation
           builder += (new Each(_, p.sourceFields, new MapOperation(p, p.fields), Fields.RESULTS))
+        } */ else {
+          builder += (new Each(_, p.sourceFields, new FlatMapOperation(p, p.fields), Fields.RESULTS))
         }
 
       case t: AbstractTable[_] =>
@@ -96,9 +100,9 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
         Console.println("is: %s %s" format (l, r))
         pipe += (new Each(_, new Fields(l.columnName.get, r.columnName.get), IsFilter))
 
-      case expr: ColumnBase[_] if (!(expr.isInstanceOf[NotAnExpression])) =>
+      case expr: Column[_] =>
         Console.println("expression fields: " + expr.arguments)
-        pipe += (new Each(_, new Fields(expr.arguments.toSeq: _*), new ExpressionFilter(expr.asInstanceOf[ColumnBase[Boolean]])))
+        pipe += (new Each(_, new Fields(expr.arguments.toSeq: _*), new ExpressionFilter(expr.asInstanceOf[Column[Boolean]])))
 
       case _ => throw new QueryException("Don't know what to do with filter node \""+c+"\" in an expression")
     }
@@ -107,7 +111,7 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
   protected def mapExpr(c: Any, pipe: PipeBuilder): Unit = {
     Console.println("mapExpr: " + c)
     c match {
-      case expr: ColumnBase[_] if (!(expr.isInstanceOf[NotAnExpression])) =>
+      case expr: Column[_] =>
         Console.println("map expression fields: " + expr.arguments)
         val args: Array[Comparable[_]] = expr.arguments.iterator.toArray.distinct
         pipe += (new Each(_, new Fields(args: _*), new MapSingleOperation(expr, nameFor(expr)), Fields.RESULTS))
