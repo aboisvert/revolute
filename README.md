@@ -20,12 +20,12 @@ And in the [documentation](https://github.com/aboisvert/revolute/wiki).
 
 ### Dependencies ###
 
-* Hadoop 0.20.1+
-* Cascading 1.2.2
+* Hadoop 0.20.2+
+* Cascading 2.0-wip+
 
 ### Target platform ###
 
-* Scala 2.8.1 + JDK 1.6
+* Scala 2.9.1 + JDK 1.6
 
 ### License ###
 
