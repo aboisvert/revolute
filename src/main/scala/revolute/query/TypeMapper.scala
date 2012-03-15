@@ -1,6 +1,7 @@
 package revolute.query
 
 import revolute.QueryException
+import scala.collection._
 
 /**
  * A (usually implicit) TypeMapper object represents a Scala type that can be
@@ -59,6 +60,8 @@ object TypeMapper {
   implicit object UnitTypeMapper extends BaseTypeMapper[Unit] {
     def apply = StandardTypeMappers.UnitTypeMapperDelegate
   }
+
+  implicit def mapTypeMapper[K, V](implicit k: TypeMapper[K], v: TypeMapper[V]): TypeMapper[Map[K, V]] = new MapTypeMapper[K, V]
 }
 
 trait BaseTypeMapper[T] extends TypeMapper[T] {
@@ -67,6 +70,12 @@ trait BaseTypeMapper[T] extends TypeMapper[T] {
 }
 
 abstract class OptionTypeMapper[T](val base: TypeMapper[T]) extends TypeMapper[Option[T]]
+
+class MapTypeMapper[K, V] extends BaseTypeMapper[Map[K, V]] {
+  def apply = new TypeMapperDelegate[Map[K, V]] {
+    val zero = mutable.Map[K, V]()
+  }
+}
 
 /**
  * Adding this marker trait to a TypeMapper makes the type eligible for
