@@ -13,6 +13,14 @@ trait ColumnBase[T] extends Serializable {
   def tables: Set[AbstractTable[_]]
 }
 
+sealed trait OutputType
+
+object OutputType {
+  case object OneToZeroOrOne extends OutputType
+  case object OneToMany      extends OutputType
+  val values = List(OneToZeroOrOne, OneToMany)
+}
+
 /** Base class for columns */
 abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   final val typeMapper = implicitly[TypeMapper[T]]

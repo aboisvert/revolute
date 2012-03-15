@@ -9,9 +9,14 @@ import scala.sys.error
 sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
   type V = T
 
+  import OperationType._
+  import OutputType._
+
   // def <>[R](f: (T => R), g: (R => Option[T])): MappedProjection[R,T] = new MappedProjection(this, f, g)
 
   def columns = productIterator map (_.asInstanceOf[Column[_]])
+
+  def outputType = if (columns exists (_.operationType == SeqMapper)) OneToMany else OneToZeroOrOne
 
   def fields(implicit context: NamingContext): Fields = {
     val names: Array[Comparable[_]] = columns map { c => c.columnName getOrElse (context.nameFor(c)) } toArray

@@ -62,9 +62,6 @@ object IsFilter extends Filter[Any] with java.io.Serializable {
   def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
 }
 
-object WithArguments {
-}
-
 class ExpressionFilter(val expr: Column[Boolean]) extends Filter[Any] with java.io.Serializable {
   override def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[Any]) = {
     ! (expr.evaluate(filterCall.getArguments).asInstanceOf[Boolean])
@@ -76,4 +73,6 @@ class ExpressionFilter(val expr: Column[Boolean]) extends Filter[Any] with java.
   override def prepare(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
   override def flush(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
   override def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
+
+  override def toString = "ExpressionFilter(%s)" format expr
 }

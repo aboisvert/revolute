@@ -76,7 +76,7 @@ class Query[E <: ColumnBase[_]](
     f
   }
 
-  override def toString = "Query"
+  override def toString = "Query(value=%s, cond=%s, modifiers=%s)" format (value, cond, modifiers)
 }
 
 trait CanBeQueryCondition[-T] {

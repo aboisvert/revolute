@@ -27,7 +27,7 @@ abstract class AbstractBasicTable[T <: Product](_tableName: String) extends Abst
 
 object BasicImplicitConversions {
 
-  implicit def columnsToFields(p: Projection[_])(implicit context: NamingContext): Fields = p.sourceFields
+  implicit def columnsToFields(p: Projection[_]): Fields = p.sourceFields
 
   implicit def baseColumnToColumnOps[B1 : BaseTypeMapper](c: Column[B1]): ColumnOps[B1, B1] = c match {
     case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, B1]]

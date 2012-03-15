@@ -1,19 +1,24 @@
 package revolute.examples
 
+import cascading.flow.Flow
 import cascading.tap.SinkMode
 import cascading.tap.local.FileTap
+import cascading.tuple.Tuple
 import cascading.scheme.local.TextDelimited
 
+import revolute.flow._
 import revolute.query._
 import revolute.query.BasicImplicitConversions._
-import revolute.query.QueryBuilder._
 import revolute.util._
+import revolute.util.Compat._
 import revolute.util.Converters._
+import revolute.test.Sandbox
 
 import org.scalatest.WordSpec
 import org.scalatest.matchers.ShouldMatchers
 
-import scala.io.Source
+import scala.collection._
+import scala.collection.mutable.ArrayBuffer
 
 @org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class AtoZSuite extends WordSpec with ShouldMatchers {
@@ -31,12 +36,13 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
   }
 
   def context(tables: AbstractTable[_]*) = {
-    implicit val context = NamingContext()
-    if (tables contains AtoZ)
-      context.tableBindings += (AtoZ -> new FileTap(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
-    if (tables contains Words)
-      context.tableBindings += (Words -> new FileTap(new TextDelimited(Words.*, " "), "target/test/resources/words.txt"))
-    context
+    FlowContext.local { context =>
+      if (tables contains AtoZ)
+        context.sources += (AtoZ -> new FileTap(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
+      if (tables contains Words)
+        context.sources += (Words -> new FileTap(new TextDelimited(Words.*, " "), "target/test/resources/words.txt"))
+      context
+    }
   }
 
   val sandbox = new Sandbox("target/test/output")
@@ -49,8 +55,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         for (az <- AtoZ) yield az.letter
       }
       result.size should be === 26
-      result should contain (Seq("a"))
-      result should contain (Seq("z"))
+      result should contain (new Tuple("a"))
+      result should contain (new Tuple("z"))
     }
 
     "map multiple fields" in {
@@ -60,8 +66,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         for (az <- AtoZ) yield az.letter ~ az.number
       }
       result.size should be === 26
-      result should contain (Seq("a", "1"))
-      result should contain (Seq("z", "26"))
+      result should contain (new Tuple("a", "1"))
+      result should contain (new Tuple("z", "26"))
     }
 
     "filter tuples using where and ===" in {
@@ -72,9 +78,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           az <- AtoZ where (_.letter === "a")
         } yield az.letter ~ az.number
       }
-      result should be === Seq(
-        Seq("a", "1")
-      )
+      result should be === Seq(new Tuple("a", "1"))
     }
 
     "filter tuples using if and ===" in {
@@ -86,7 +90,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         } yield az.letter ~ az.number
       }
       result should be === Seq(
-        Seq("a", "1")
+        new Tuple("a", "1")
       )
     }
 
@@ -99,9 +103,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         } yield concat
       }
       result.size should be === 26
-      result should contain (Seq("a1"))
-      result should contain (Seq("b2"))
-      result should contain (Seq("c3"))
+      result should contain (new Tuple("a1"))
+      result should contain (new Tuple("b2"))
+      result should contain (new Tuple("c3"))
     }
 
     "filter tuples with a set" in {
@@ -113,9 +117,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         } yield abc
       }
       result.size should be === 3
-      result should contain (Seq("a", "1"))
-      result should contain (Seq("b", "2"))
-      result should contain (Seq("c", "3"))
+      result should contain (new Tuple("a", "1"))
+      result should contain (new Tuple("b", "2"))
+      result should contain (new Tuple("c", "3"))
     }
 
     "apply multiple conditions" in {
@@ -128,7 +132,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         } yield AtoZ
       }
       result.size should be === 1
-      result should contain (Seq("a", "1"))
+      result should contain (new Tuple("a", "1"))
     }
 
     "filter using multiple conditions with logical AND" in {
@@ -140,8 +144,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         } yield AtoZ
       }
       result.size should be === 2
-      result should contain (Seq("f", "6"))
-      result should contain (Seq("g", "7"))
+      result should contain (new Tuple("f", "6"))
+      result should contain (new Tuple("g", "7"))
     }
 
     "join tables implicitly" in {
@@ -154,8 +158,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         } yield az.letter ~ az.number ~ words.word
       }
       result.size should be === 8
-      result should contain (Seq("a", "1", "apple"))
-      result should contain (Seq("h", "8", "house"))
+      result should contain (new Tuple("a", "1", "apple"))
+      result should contain (new Tuple("h", "8", "house"))
     }
 
     "join tables using innerJoin" in {
@@ -175,8 +179,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         }
       }
       result.size should be === 8
-      result should contain (Seq("a", "1", "apple"))
-      result should contain (Seq("h", "8", "house"))
+      result should contain (new Tuple("a", "1", "apple"))
+      result should contain (new Tuple("h", "8", "house"))
     }
 
     "allow mapping values using an inlined closure" in {
@@ -190,9 +194,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         query
       }
       result.size should be === 26
-      result should contain (Seq("a", "yes"))
-      result should contain (Seq("b", "no"))
-      result.filter(_(1) == "yes").size should be === 6
+      result should contain (new Tuple("a", "yes"))
+      result should contain (new Tuple("b", "no"))
+      result.filter(_.get(1) == "yes").size should be === 6
     }
 
     "allow mapping + filtering using mapOption" in {
@@ -206,12 +210,12 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         query
       }
       result.size should be === 6
-      result should contain (Seq("a", "yes"))
-      result should contain (Seq("e", "yes"))
-      result should contain (Seq("i", "yes"))
-      result should contain (Seq("o", "yes"))
-      result should contain (Seq("u", "yes"))
-      result should contain (Seq("y", "yes"))
+      result should contain (new Tuple("a", "yes"))
+      result should contain (new Tuple("e", "yes"))
+      result should contain (new Tuple("i", "yes"))
+      result should contain (new Tuple("o", "yes"))
+      result should contain (new Tuple("u", "yes"))
+      result should contain (new Tuple("y", "yes"))
     }
 
     "allow mapping + filtering using mapPartial" in {
@@ -225,33 +229,12 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         query
       }
       result.size should be === 6
-      result should contain (Seq("a", "yes"))
-      result should contain (Seq("e", "yes"))
-      result should contain (Seq("i", "yes"))
-      result should contain (Seq("o", "yes"))
-      result should contain (Seq("u", "yes"))
-      result should contain (Seq("y", "yes"))
+      result should contain (new Tuple("a", "yes"))
+      result should contain (new Tuple("e", "yes"))
+      result should contain (new Tuple("i", "yes"))
+      result should contain (new Tuple("o", "yes"))
+      result should contain (new Tuple("u", "yes"))
+      result should contain (new Tuple("y", "yes"))
     }
-  }
-}
-
-class Sandbox(val outputDir: String) {
-
-  private var outputNumber = 0
-
-  def outputFile(file: String) = synchronized {
-    outputNumber += 1
-    file + "-" + outputNumber
-  }
-
-  def run[T](query: Query[_ <: ColumnBase[T]])(implicit context: NamingContext): Seq[Seq[String]] = {
-    implicit val flowConnector = new cascading.flow.local.LocalFlowConnector()
-    val output = outputFile(outputDir)
-    val flow = query.outputTo(new FileTap(new TextDelimited(query.fields, "\t"), output, SinkMode.REPLACE))
-    flow.start()
-    flow.complete()
-
-    val lines = Source.fromFile(output).getLines.toSeq map (_.split("\t").toSeq)
-    lines
   }
 }

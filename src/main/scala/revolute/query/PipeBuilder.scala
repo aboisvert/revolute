@@ -10,7 +10,9 @@ import scala.collection.mutable.{HashMap, HashSet}
 
 class PipeBuilder(private var _pipe: Pipe) {
   def +=(f: Pipe => Pipe): Unit = {
-    _pipe = f(_pipe)
+    val newPipe = f(_pipe)
+    Console.println("PipeBuilder: add " + newPipe)
+    _pipe = newPipe
   }
 
   def pipe = _pipe

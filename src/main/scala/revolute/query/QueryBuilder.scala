@@ -12,26 +12,11 @@ import revolute.util.Compat._
 
 import scala.sys.error
 
-object QueryBuilder {
-  implicit def queryToBuilder[T <: ColumnBase[_]](query: Query[T]) = new QueryBuilder(query)
-}
-
-class QueryBuilder[T <: ColumnBase[_]](val query: Query[T]) {
-  def outputTo(sink: Tap)(implicit context: NamingContext, flowConnector: FlowConnector): Flow[_] = {
-    val qb = new BasicQueryBuilder(query, NamingContext())
-    val pipe = qb.build()
-    val flow = flowConnector.connect(context.sources, sink, pipe)
-    flow
-  }
-}
-
-class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
+class QueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
   protected val query: Query[_] = _query
   protected implicit var nc: NamingContext = _nc
 
   final def build(): Pipe = {
-    Console.println("build: value=%s" format _query.value)
-
     val tablePipes = {
       val tables = _query.tables
       if (tables.size == 1) {
@@ -50,33 +35,35 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
     pipe.pipe
   }
 
-  protected def select(value: Any, builder: PipeBuilder) {
+  protected def select(value: Any, pipe: PipeBuilder) {
     import OperationType._
 
     Console.println("select: value=%s" format value)
     value match {
       case nc: NamedColumn[_] =>
         Console.println("select: named column; fields=%s" format nc.columnName.get)
-        builder += (new Each(_, new Fields(nc.columnName.get), new Identity(), Fields.RESULTS))
+        pipe += (new Each(_, new Fields(nc.columnName.get), new Identity(), Fields.RESULTS))
 
       case p: Projection[_] =>
         Console.println("select: projection; source fields=%s -> fields=%s" format (p.sourceFields, p.fields))
         if (p.columns.forall(_.isInstanceOf[NamedColumn[_]])) {
           // all named columns, just use identity transform
-          builder += (new Each(_, p.sourceFields, new Identity(), Fields.RESULTS))
-        } /* else if (p.operationType == PureMapper) {
-          // at least one column is a transformation
-          builder += (new Each(_, p.sourceFields, new MapOperation(p, p.fields), Fields.RESULTS))
-        } */ else {
-          builder += (new Each(_, p.sourceFields, new FlatMapOperation(p, p.fields), Fields.RESULTS))
+          pipe += (new Each(_, p.sourceFields, new Identity(), Fields.RESULTS))
+        } else {
+          pipe += (new Each(_, p.sourceFields, new FlatMapOperation(p, p.fields), Fields.RESULTS))
         }
 
       case t: AbstractTable[_] =>
         Console.println("select: abstract table; source fields=%s" format t.*.sourceFields)
-        builder += (new Each(_, t.*.sourceFields, new Identity(), Fields.RESULTS))
+        pipe += (new Each(_, t.*.sourceFields, new Identity(), Fields.RESULTS))
 
-      case c: Any =>
-        mapExpr(c, builder)
+      case expr: Column[_] =>
+        Console.println("map expression fields: " + expr.arguments)
+        val args: Array[Comparable[_]] = expr.arguments.iterator.toArray.distinct
+        val p = new Projection1(expr)
+        pipe += (new Each(_, new Fields(args: _*), new FlatMapOperation(p, p.fields), Fields.RESULTS))
+
+      case _ => throw new QueryException("Don't know what to do with map node \"" + value + "\" in an expression")
     }
   }
 
@@ -106,22 +93,6 @@ class BasicQueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext
 
       case _ => throw new QueryException("Don't know what to do with filter node \""+c+"\" in an expression")
     }
-  }
-
-  protected def mapExpr(c: Any, pipe: PipeBuilder): Unit = {
-    Console.println("mapExpr: " + c)
-    c match {
-      case expr: Column[_] =>
-        Console.println("map expression fields: " + expr.arguments)
-        val args: Array[Comparable[_]] = expr.arguments.iterator.toArray.distinct
-        pipe += (new Each(_, new Fields(args: _*), new MapSingleOperation(expr, nameFor(expr)), Fields.RESULTS))
-
-      case _ => throw new QueryException("Don't know what to do with map node \""+c+"\" in an expression")
-    }
-  }
-
-  protected def nameFor(column: ColumnBase[_]) = {
-    column.columnName getOrElse { _nc.nameFor(column) }
   }
 
   protected def appendConditions(b: PipeBuilder): Unit = query.cond match {

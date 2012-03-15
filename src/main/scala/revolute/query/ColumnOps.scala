@@ -107,7 +107,7 @@ trait ColumnOps[B1, P1] {
   def mapOption[T2](f: P1 => Option[T2])(implicit tm: TypeMapper[T2]) = new MapOption[P1, T2](leftOperand, f)
 
   def mapPartial[T2](f: PartialFunction[P1,T2])(implicit tm: TypeMapper[T2]) = new MapPartial[P1, T2](leftOperand, f)
-  
+
   // Boolean only
   def &&(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): OperatorColumn[Boolean] =
     And(leftOperand.asInstanceOf[Column[Boolean]], b.asInstanceOf[Column[Boolean]])
@@ -390,7 +390,7 @@ object ColumnOps {
     override def apply(leftValue: T1) = if (f.isDefinedAt(leftValue)) Some(f(leftValue)) else None
     override def operationType = OptionMapper
   }
-  
+
   case class LessThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
     extends BinaryOperator[O, O, Boolean, Boolean]
   {

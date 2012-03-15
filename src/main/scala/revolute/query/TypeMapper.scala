@@ -6,7 +6,7 @@ import revolute.QueryException
  * A (usually implicit) TypeMapper object represents a Scala type that can be
  * used as a column type.
  */
-sealed trait TypeMapper[T] extends java.io.Serializable { self =>
+trait TypeMapper[T] extends java.io.Serializable { self =>
   def apply: TypeMapperDelegate[T]
 
   def createOptionTypeMapper: OptionTypeMapper[T] = new OptionTypeMapper[T](self) {
