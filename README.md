@@ -1,9 +1,21 @@
 Revolute: Scala-based Query Language for Hadoop
 ===============================================
 
-Think Fancy Scala DSL over Cascading -- or Cascalog for Scala.
+Revolute aims to provide a rich SQL-like querying language (embedded DSL)
+inspired by Apache Hive and Scala Query.
 
-More of an experiment than anything else at this point.
+The main benefit over Apache Hive is the increased expressivity -- with Scala's
+powerful abstraction and composition facilities at your disposal.
+
+Revolute is essentialy "thin layer" on top of Cascading, which provides the
+muscle and a simplified working model for big data processing, including (but
+not limited to) deployment on top of Apache Hadoop, an engaged open-source
+community, and an wide ecosystem of extensions (sinks, taps, serializers, etc).
+
+### Status ###
+
+Revolute is a work-in-progress.  It is underdoing heavy development and is not
+considered stable at the moment.
 
 ### Building ###
 
