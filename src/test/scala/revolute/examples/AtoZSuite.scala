@@ -8,7 +8,7 @@ import cascading.scheme.local.TextDelimited
 
 import revolute.flow._
 import revolute.query._
-import revolute.query.BasicImplicitConversions._
+import revolute.query.ImplicitConversions._
 import revolute.util._
 import revolute.util.Compat._
 import revolute.util.Converters._
@@ -25,7 +25,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
 
   object AtoZ extends Table[(String, Int)]("A to Z") {
     def letter = column[String]("letter")
-    def number = column[String]("number").as[Int]
+    def number = column[String]("number").asColumnOf[Int]
     def * = letter ~ number
   }
 
@@ -38,9 +38,9 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
   def context(tables: AbstractTable[_]*) = {
     FlowContext.local { context =>
       if (tables contains AtoZ)
-        context.sources += (AtoZ -> new FileTap(new TextDelimited(AtoZ.*, " "), "target/test/resources/a-z.txt"))
+        context.sources += (AtoZ -> new FileTap(new TextDelimited(inputFields(AtoZ.*), " "), "target/test/resources/a-z.txt"))
       if (tables contains Words)
-        context.sources += (Words -> new FileTap(new TextDelimited(Words.*, " "), "target/test/resources/words.txt"))
+        context.sources += (Words -> new FileTap(new TextDelimited(inputFields(Words.*), " "), "target/test/resources/words.txt"))
       context
     }
   }
@@ -48,6 +48,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
   val sandbox = new Sandbox("target/test/output")
 
   "simple query" should {
+
     "map single field" in {
       implicit val _ = context(AtoZ)
 
@@ -65,6 +66,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       val result = sandbox run {
         for (az <- AtoZ) yield az.letter ~ az.number
       }
+
       result.size should be === 26
       result should contain (new Tuple("a", "1"))
       result should contain (new Tuple("z", "26"))
@@ -99,7 +101,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
 
       val result = sandbox run {
         for {
-          concat <- AtoZ.letter ++ AtoZ.number.as[String]
+          concat <- AtoZ.letter ++ AtoZ.number.asColumnOf[String]
         } yield concat
       }
       result.size should be === 26
@@ -116,6 +118,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           abc <- AtoZ where (_.letter in Set("a", "b", "c"))
         } yield abc
       }
+
       result.size should be === 3
       result should contain (new Tuple("a", "1"))
       result should contain (new Tuple("b", "2"))
@@ -143,6 +146,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
           _ <- AtoZ where { az => az.number > 5 && az.number <= 7 }
         } yield AtoZ
       }
+
       result.size should be === 2
       result should contain (new Tuple("f", "6"))
       result should contain (new Tuple("g", "7"))
@@ -166,17 +170,14 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       implicit val _ = context(AtoZ, Words)
 
       val result = sandbox run {
-        // fails to compile?
-        // inferred type arguments [Boolean] do not conform to method filter's type parameter bounds
-        // [T <: revolute.query.ColumnBase[_]]
-        /*
         for {
           Join(az, words) <- ((AtoZ innerJoin Words) on (_.letter is _.letter))
         } yield az.letter ~ az.number ~ words.word
-        */
+        /*
         AtoZ innerJoin Words on (_.letter is _.letter) map { case Join(az, words) =>
           az.letter ~ az.number ~ words.word
         }
+        */
       }
       result.size should be === 8
       result should contain (new Tuple("a", "1", "apple"))

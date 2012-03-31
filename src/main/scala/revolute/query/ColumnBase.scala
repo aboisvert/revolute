@@ -1,16 +1,31 @@
 package revolute.query
 
-import revolute.QueryException
 import cascading.tuple.TupleEntry
+
+import revolute.QueryException
+import revolute.query.TypeMapper._
+import revolute.util.{Identifier, NamingContext, Tuple}
 
 import scala.collection._
 import scala.sys.error
 
 /** Common base trait for columns, tables and projections (but not unions and joins) */
-trait ColumnBase[T] extends Serializable {
+trait ColumnBase[+T] extends Serializable {
   type _T = T
-  def columnName: Option[String] = None
-  def tables: Set[AbstractTable[_]]
+
+  /** Name hint for anonymous (e.g., calculated) column */
+  def nameHint: String
+
+  /** Columns (directly) required to compute this column */
+  def dependencies: Set[ColumnBase[_]]
+
+  def operationType: OperationType
+
+  /** Returns a new EvaluationContext wrapping a parent evaluation context.
+   *
+   *  @see EvaluationChain
+   */
+  def chainEvaluation(parent: EvaluationContext): EvaluationContext
 }
 
 sealed trait OutputType
@@ -21,15 +36,16 @@ object OutputType {
   val values = List(OneToZeroOrOne, OneToMany)
 }
 
+trait SyntheticColumn[T] extends ColumnBase[T] {
+  override val nameHint = getClass.getSimpleName
+  override val operationType = OperationType.PureMapper
+  override def dependencies = sys.error("Should not be called; use case-by-case for synthetic column dependencies: " + this)
+  override def chainEvaluation(context: EvaluationContext) = context // passthrough
+}
+
 /** Base class for columns */
 abstract class Column[T: TypeMapper] extends ColumnBase[T] {
   final val typeMapper = implicitly[TypeMapper[T]]
-
-  def arity: Int = arguments.size
-  def arguments: Set[String]
-
-  def operationType: OperationType
-  def evaluate(args: TupleEntry): Any
 
   // def orElse(n: =>T): Column[T] = new WrappedColumn[T](this) { }
 
@@ -41,7 +57,7 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
 
   // def get[U](implicit ev: Option[U] =:= T): Column[U] = getOr[U] { throw new QueryException("Read NULL value for column "+this) }
 
-  final def ~[U](b: ColumnBase[U]) = new Projection2[T, U](this, b)
+  final def ~[U](b: ColumnBase[U])(implicit tm: TypeMapper[U]) = new Projection2[T, U](this, b)
 
   // Functions which don't need an OptionMapper
   // def in(e: Query[Column[_]]) = ColumnOps.In(this, e)
@@ -53,6 +69,7 @@ abstract class Column[T: TypeMapper] extends ColumnBase[T] {
 
   def asc = new ResultOrdering.Asc(By(this))
   def desc = new ResultOrdering.Desc(By(this))
+
 }
 
 object ConstColumn {
@@ -63,11 +80,21 @@ object ConstColumn {
 }
 
 /** A column with a constant value (i.e., literal value) */
-case class ConstColumn[T : TypeMapper](override val columnName: Option[String], value: T) extends Column[T] {
-  override def tables = Set.empty[AbstractTable[_]]
-  override val arguments = Set.empty[String]
+case class ConstColumn[T : TypeMapper](val columnName: Option[String], value: T) extends Column[T] {
+  override val nameHint = columnName.getOrElse("const-" + value)
+
+  override val dependencies = Set.empty[ColumnBase[_]]
+
   override def operationType = OperationType.PureMapper
-  override def evaluate(args: TupleEntry): T = value
+
+  override def chainEvaluation(context: EvaluationContext): EvaluationContext = {
+    new EvaluationContext {
+      val tuple = new Tuple { override def get(pos: Int) = value }
+      override def nextTuple() = tuple
+      override def position(c: ColumnBase[_]) = 0
+      override def toString = ConstColumn.this.toString
+    }
+  }
   override def toString = value match {
     case null => "ConstColumn null"
     case a: AnyRef => "ConstColumn["+a.getClass.getName+"] "+a
@@ -77,26 +104,46 @@ case class ConstColumn[T : TypeMapper](override val columnName: Option[String], 
 
 /** A column which gets created as the result of applying an operator. */
 abstract class OperatorColumn[T : TypeMapper] extends Column[T] with ColumnOps[T, T] {
+  override val nameHint = getClass.getSimpleName
+  override def operationType: OperationType = OperationType.PureMapper
   val leftOperand: Column[T]
 }
 
 /** A column which is part of a Table. */
-class NamedColumn[T: TypeMapper](val table: AbstractTable[_], _columnName: String, val options: ColumnOption[_]*)
+class NamedColumn[T: TypeMapper](val table: AbstractTable[_], val columnName: String, val options: ColumnOption[_]*)
   extends OperatorColumn[T] with ColumnOps[T, T]
 {
+  val qualifiedColumnName = table.tableName + "." + columnName
+
+  override val nameHint = qualifiedColumnName
+
+  override def dependencies = Set.empty[ColumnBase[_]]
+
   override val leftOperand = this
-  override def operationType = OperationType.PureMapper
-  override val columnName = Some(table.tableName + "." + _columnName)
-  override val arguments = Set(columnName.get)
-  override def evaluate(args: TupleEntry): T = args.get(columnName.get).asInstanceOf[T]
-  override def tables = Set(table)
+
+  override val operationType = OperationType.PureMapper
+
+  override def chainEvaluation(context: EvaluationContext): EvaluationContext = {
+    new EvaluationContext {
+      private[this] lazy val pos = context.position(NamedColumn.this)
+      private[this] val tuple = new Tuple { override def get(pos: Int) = value }
+      private[this] var value: Any = null
+      override def nextTuple(): Tuple = {
+        val next = context.nextTuple()
+        if (next == null) return null
+        value = next.get(pos)
+        tuple
+      }
+      override def position(c: ColumnBase[_]) = 0
+    }
+  }
 
   override def equals(x: Any) = x match {
     case other: NamedColumn[_] => this.table == other.table && this.columnName == other.columnName
     case _ => false
   }
   override def hashCode = (table.hashCode * 13) + (columnName.hashCode * 17)
-  override def toString = "NamedColumn(%s)" format columnName.get
+  override def toString = "NamedColumn(%s)" format qualifiedColumnName
 }
 
 object NullOrdering extends Ordering[AnyRef] {

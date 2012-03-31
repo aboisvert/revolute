@@ -1,24 +1,29 @@
 package revolute.query
 
+import cascading.tuple.TupleEntry
 import scala.collection._
+import revolute.util.Identifier
 
-sealed trait TableBase[T <: Product] extends ColumnBase[T] with java.io.Serializable
+sealed trait TableBase[T <: Product] extends ColumnBase[T] with java.io.Serializable {
+  // def operationType = OperationType.PureMapper
+}
 
 abstract class AbstractTable[T <: Product](val tableName: String) extends TableBase[T] {
   def * : Projection[T]
 
-  override def toString = "Table " + tableName
-
-  final override def tables = Set(this)
+  override def nameHint = tableName
+  override def dependencies = *.dependencies
+  override val operationType = OperationType.PureMapper
+  override def chainEvaluation(context: EvaluationContext) = *.chainEvaluation(context)
 
   final override def equals(other: Any) = other match {
     case t: AbstractTable[_] => t.tableName == this.tableName
+    case _ => false
   }
 
   final override def hashCode = tableName.hashCode
 
-  implicit def columnToProjection[T](c: Column[T]): Projection[Tuple1[T]] = new Projection1[T](c)
-
+  override def toString = "Table " + tableName
 }
 
 final class JoinBase[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](_left: T1, _right: T2, joinType: Join.JoinType) {
@@ -33,7 +38,10 @@ final class Join[+T1 <: AbstractTable[_], +T2 <: TableBase[_]](
   val joinType: Join.JoinType,
   val on: ColumnBase[_]
 ) extends TableBase[Nothing] {
-  override def tables = left.tables ++ right.tables
+  override val nameHint = "Join"
+  override def dependencies = Set(left, right)
+  override val operationType = OperationType.PureMapper
+  override def chainEvaluation(context: EvaluationContext) = sys.error("shouldn't be called")
   override def toString = "Join(%s, %s)" format (left, right)
 }
 

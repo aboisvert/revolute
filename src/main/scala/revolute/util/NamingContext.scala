@@ -1,28 +1,47 @@
 package revolute.util
 
+import scala.annotation.tailrec
 import scala.collection._
 import scala.collection.JavaConversions
 
-trait NamingContext {
-  def nameFor(t: Any): String
+sealed trait Identifier
 
-  def overrideName(node: Any, newName: String): NamingContext = new NamingContext {
-    def nameFor(n: Any) = if (n == node) newName else nameFor(n)
+object Identifier {
+  case class Name(name: String)   extends Identifier
+  case class Ref(id: Identifier)  extends Identifier
+  class Anonymous(val prefix: String) extends Identifier
+}
+
+trait NamingContext {
+  def nameFor(id: Identifier): String
+
+  def overrideName(overrideId: Identifier, newName: String): NamingContext = new NamingContext {
+    def nameFor(id: Identifier) = if (id == overrideId) newName else nameFor(id)
   }
 }
 
 object NamingContext {
   def apply() = new NamingContext {
-    private val tnames = mutable.Map[Any, String]()
+    private val names = mutable.Map[Identifier, String]()
     private var nextTid = 1
 
-    def nameFor(t: Any) = tnames.get(t) match {
-      case Some(n) => n
-      case None =>
-        val n = "t" + nextTid
+    override def nameFor(t: Identifier) = names.getOrElse(t, t match {
+      case a: Identifier.Anonymous =>
+        val newName = a.prefix + "#" + nextTid
         nextTid += 1
-        tnames.put(t, n)
-        n
-    }
+        names.put(a, newName)
+        newName
+      case Identifier.Name(name) => name
+      case Identifier.Ref(id)    => nameFor(id)
+    })
+  }
+}
+
+object StaticNamingContext extends NamingContext {
+  @tailrec
+  override def nameFor(t: Identifier) = t match {
+    case a: Identifier.Anonymous => sys.error("Anonymous identifier reference within a static context")
+    case Identifier.Name(name)   => name
+    case Identifier.Ref(id)      => nameFor(id)
   }
 }

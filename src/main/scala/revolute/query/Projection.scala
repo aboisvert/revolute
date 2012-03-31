@@ -1,12 +1,13 @@
 package revolute.query
 
 import cascading.tuple.{Fields, TupleEntry}
+import revolute.query.TypeMapper._
+import revolute.util.{Identifier, NamingContext, Tuple}
 import revolute.util.Compat._
-import revolute.util.NamingContext
 import scala.collection._
 import scala.sys.error
 
-sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
+abstract class Projection[T <: Product] extends ColumnBase[T] {
   type V = T
 
   import OperationType._
@@ -14,48 +15,36 @@ sealed trait Projection[T <: Product] extends ColumnBase[T] with Product {
 
   // def <>[R](f: (T => R), g: (R => Option[T])): MappedProjection[R,T] = new MappedProjection(this, f, g)
 
-  def columns = productIterator map (_.asInstanceOf[Column[_]])
+  def projectionArity: Int
 
-  def outputType = if (columns exists (_.operationType == SeqMapper)) OneToMany else OneToZeroOrOne
+  def columns: Seq[ColumnBase[_]]
 
-  def fields(implicit context: NamingContext): Fields = {
-    val names: Array[Comparable[_]] = columns map { c => c.columnName getOrElse (context.nameFor(c)) } toArray
-    val fields: Fields = new Fields(names: _*)
-    Console.println("projection {%s} fields %s " format (columns.toList, fields))
-    fields
+  override val nameHint = "Projection" + projectionArity
+
+  override def dependencies = columns.toSet
+
+  override val operationType = OperationType.PureMapper
+
+  override def chainEvaluation(context: EvaluationContext): EvaluationContext = {
+    new EvaluationContext {
+      lazy val positions = columns map { c => c -> context.position(c) } toMap
+      override def nextTuple(): Tuple = context.nextTuple()
+      override def position(c: ColumnBase[_]) = positions(c)
+      override def toString = "Projection.EvaluationContext(%s)" format context
+    }
   }
 
-  def sourceFields: Fields = {
-    val names: Array[String] = (columns flatMap (_.arguments.iterator) toArray).distinct
-    val fields: Fields = new Fields(names: _*)
-    Console.println("projection {%s} source fields %s " format (columns.toList, fields))
-    fields
-  }
-
-  override def tables = {
-    Set() ++ columns flatMap (_.tables)
-  }
-
-  /*
-  override def arguments = (columns.toSeq map (_.arguments) flatten) toSet
-
-  override def evaluate(args: TupleEntry): T = error("todo")
-
-
-  override def operationType: OperationType = {
-    import OperationType._
-    if (columns forall (_.operationType == PureMapper)) PureMapper
-    else if (columns exists (_.operationType == SeqMapper)) SeqMapper
-    else NullableMapper
-  }
-  */
-  override def toString = "Projection%d(%s)" format (productArity, productIterator.toList)
+  override def toString = "Projection%d(%s)" format (projectionArity, columns.toList)
 }
 
 object Projection {
-  def unapply[T1,T2](p: Projection2[T1,T2]) = Some(p)
-  def unapply[T1,T2,T3](p: Projection3[T1,T2,T3]) = Some(p)
-  def unapply[T1,T2,T3,T4](p: Projection4[T1,T2,T3,T4]) = Some(p)
+  def unapply[T1,T2](p: Projection2[T1, T2]) = {
+    val columns = p.unapply
+    Some(columns._1, columns._2)
+  }
+  //def unapply[T1,T2](p: Projection2[T1,T2]) = Some(p)
+  //def unapply[T1,T2,T3](p: Projection3[T1,T2,T3]) = Some(p)
+  // def unapply[T1,T2,T3,T4](p: Projection4[T1,T2,T3,T4]) = Some(p)
   /*
   def unapply[T1,T2,T3,T4,T5](p: Projection5[T1,T2,T3,T4,T5]) = Some(p)
   def unapply[T1,T2,T3,T4,T5,T6](p: Projection6[T1,T2,T3,T4,T5,T6]) = Some(p)
@@ -66,23 +55,14 @@ object Projection {
   */
 }
 
-/*
-class MappedProjection[T, P <: Product](val child: Projection[P], f: (P => T), g: (T => Option[P])) extends ColumnBase[T] {
-  override def toString = "MappedProjection"
-  override def arguments = child.arguments
-  override def evaluate(args: TupleEntry): T = error("todo")
-  override def tables = child.tables
-}
-*/
-
 object ~ {
   def unapply[T1,T2](p: Projection2[T1,T2]) =
-    Some(p)
-  def unapply[T1,T2,T3](p: Projection3[T1,T2,T3]) =
+    Some(p._1, p._2)
+  def unapply2[T1,T2,T3](p: Projection3[T1,T2,T3])(implicit t3: TypeMapper[T3]) =
     Some((new Projection2(p._1,p._2), p._3))
+  /*
   def unapply[T1,T2,T3,T4](p: Projection4[T1,T2,T3,T4]) =
     Some((new Projection3(p._1,p._2,p._3), p._4))
-  /*
   def unapply[T1,T2,T3,T4,T5](p: Projection5[T1,T2,T3,T4,T5]) =
     Some((new Projection4(p._1,p._2,p._3,p._4), p._5))
   def unapply[T1,T2,T3,T4,T5,T6](p: Projection6[T1,T2,T3,T4,T5,T6]) =
@@ -99,16 +79,22 @@ object ~ {
 }
 
 final class Projection1[T1](
-  override val _1: ColumnBase[T1]
-) extends Tuple1(_1) with Projection[Tuple1[T1]] {
-  def ~[U](c: Column[U]) = new Projection2(_1, c)
+  val _1: ColumnBase[T1]
+) extends Projection[Tuple1[T1]] {
+  override val projectionArity = 1
+  def ~[U](c: ColumnBase[U]) = new Projection2(_1, c)
+  def columns = Seq(_1)
 }
 
 final class Projection2[T1,T2](
-  override val _1: ColumnBase[T1],
-  override val _2: ColumnBase[T2]
-) extends Tuple2(_1,_2) with Projection[(T1,T2)] {
-  def ~[U](c: ColumnBase[U]) = new Projection3(_1,_2,c)
+  val _1: ColumnBase[T1],
+  val _2: ColumnBase[T2]
+) extends Projection[(T1,T2)] {
+  override val projectionArity = 2
+  def ~[U](c: ColumnBase[U]) = new Projection3(_1, _2, c)
+  def columns: Seq[ColumnBase[_]] = Seq(_1, _2)
+  def unapply = (_1, _2)
+
   /*
   def <>[R](f: ((T1,T2) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2), g)
@@ -116,25 +102,28 @@ final class Projection2[T1,T2](
 }
 
 final class Projection3[T1,T2,T3](
-  override val _1: ColumnBase[T1],
-  override val _2: ColumnBase[T2],
-  override val _3: ColumnBase[T3]
-)
-extends Tuple3(_1,_2,_3) with Projection[(T1,T2,T3)] {
-  def ~[U](c: Column[U]) = new Projection4(_1,_2,_3,c)
+  val _1: ColumnBase[T1],
+  val _2: ColumnBase[T2],
+  val _3: ColumnBase[T3]
+) extends Projection[(T1,T2,T3)] {
+  override val projectionArity = 3
+  // def ~[U](c: Column[U]) = new Projection4(_1,_2,_3,c)
+  def columns = Seq(_1, _2, _3)
   /*
   def <>[R](f: ((T1,T2,T3) => R), g: (R => Option[V])): MappedProjection[R,V] =
     <>(t => f(t._1,t._2,t._3), g)
   */
 }
 
+/*
 final class Projection4[T1,T2,T3,T4](
-  override val _1: ColumnBase[T1],
-  override val _2: ColumnBase[T2],
-  override val _3: ColumnBase[T3],
-  override val _4: ColumnBase[T4]
+  val _1: ColumnBase[T1],
+  val _2: ColumnBase[T2],
+  val _3: ColumnBase[T3],
+  val _4: ColumnBase[T4]
 )
-extends Tuple4(_1,_2,_3,_4) with Projection[(T1,T2,T3,T4)] {
+extends Projection[(T1,T2,T3,T4)] {
+  def columns = Seq(_1, _2, _3)
   // def ~[U](c: Column[U]) = new Projection5(_1,_2,_3,_4,c)
   /*
   override def mapOp(f: Node => Node): this.type = new Projection4(
@@ -150,6 +139,7 @@ extends Tuple4(_1,_2,_3,_4) with Projection[(T1,T2,T3,T4)] {
     */
 }
 
+*/
 /*
 
 final class Projection5[T1,T2,T3,T4,T5](

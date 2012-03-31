@@ -2,8 +2,7 @@ package revolute.examples
 
 import revolute._
 import revolute.query._
-
-import BasicImplicitConversions._
+import revolute.query.ImplicitConversions._
 
 object Persons extends Table[(String, Int)]("persons") {
   def name = column[String]("id")

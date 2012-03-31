@@ -18,7 +18,8 @@ class QueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
 
   final def build(): Pipe = {
     val tablePipes = {
-      val tables = _query.tables
+      val tables = EvaluationChain.tables(_query.value)
+      Console.println("Pipe heads: " + tables)
       if (tables.size == 1) {
         new Pipe(tables.head.tableName)
       } else {
@@ -41,33 +42,36 @@ class QueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
     Console.println("select: value=%s" format value)
     value match {
       case nc: NamedColumn[_] =>
-        Console.println("select: named column; fields=%s" format nc.columnName.get)
-        pipe += (new Each(_, new Fields(nc.columnName.get), new Identity(), Fields.RESULTS))
+        Console.println("select: named column; fields=%s" format nc.nameHint)
+        pipe += (new Each(_, inputFields(nc), new Identity(), Fields.RESULTS))
 
       case p: Projection[_] =>
-        Console.println("select: projection; source fields=%s -> fields=%s" format (p.sourceFields, p.fields))
+        Console.println("select: projection; columns=%s" format (p.columns))
         if (p.columns.forall(_.isInstanceOf[NamedColumn[_]])) {
           // all named columns, just use identity transform
-          pipe += (new Each(_, p.sourceFields, new Identity(), Fields.RESULTS))
+          pipe += (new Each(_, inputFields(p), new Identity(), Fields.RESULTS))
         } else {
-          pipe += (new Each(_, p.sourceFields, new FlatMapOperation(p, p.fields), Fields.RESULTS))
+          Console.println("input fields: " + inputFields(p))
+          Console.println("output fields: " + outputFields(p))
+          pipe += (new Each(_, inputFields(p), new FlatMapOperation(p), Fields.RESULTS))
         }
 
       case t: AbstractTable[_] =>
-        Console.println("select: abstract table; source fields=%s" format t.*.sourceFields)
-        pipe += (new Each(_, t.*.sourceFields, new Identity(), Fields.RESULTS))
+        Console.println("select: abstract table; source fields=%s" format inputFields(t.*))
+        pipe += (new Each(_, inputFields(t.*), new Identity(), Fields.RESULTS))
 
       case expr: Column[_] =>
-        Console.println("map expression fields: " + expr.arguments)
-        val args: Array[Comparable[_]] = expr.arguments.iterator.toArray.distinct
+        Console.println("map expression fields: " + expr.dependencies)
+        Console.println("inputFields:  " + inputFields(expr))
+        Console.println("outputFields: " + outputFields(expr))
         val p = new Projection1(expr)
-        pipe += (new Each(_, new Fields(args: _*), new FlatMapOperation(p, p.fields), Fields.RESULTS))
+        pipe += (new Each(_, inputFields(p), new FlatMapOperation(p), Fields.RESULTS))
 
       case _ => throw new QueryException("Don't know what to do with map node \"" + value + "\" in an expression")
     }
   }
 
-  protected def filters(conditions: List[Column[_]], pipe: PipeBuilder) {
+  protected def filters(conditions: List[ColumnBase[_]], pipe: PipeBuilder) {
     Console.println("filter: conditions=%s" format conditions)
     conditions foreach { c => filterExpr(c, pipe) }
   }
@@ -77,19 +81,19 @@ class QueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
     c match {
       case ColumnOps.InSet(e, set) =>
         Console.println("in set: %s %s" format (e, set))
-        pipe += (new Each(_, new Fields(e.columnName.get), new InSetFilter(set)))
+        pipe += (new Each(_, inputFields(e), new InSetFilter(set)))
 
       case ColumnOps.Is(c: ColumnBase[_], v: ConstColumn[_]) =>
         Console.println("is: %s %s" format (c, v))
-        pipe += (new Each(_, new Fields(c.columnName.get), new EqualConstFilter(v.value)))
+        pipe += (new Each(_, inputFields(c), new EqualConstFilter(v.value)))
 
       case ColumnOps.Is(l, r) =>
         Console.println("is: %s %s" format (l, r))
-        pipe += (new Each(_, new Fields(l.columnName.get, r.columnName.get), IsFilter))
+        pipe += (new Each(_, inputFields(new Projection2(l, r)), IsFilter))
 
       case expr: Column[_] =>
-        Console.println("expression fields: " + expr.arguments)
-        pipe += (new Each(_, new Fields(expr.arguments.toSeq: _*), new ExpressionFilter(expr.asInstanceOf[Column[Boolean]])))
+        Console.println("expression fields: " + expr.dependencies)
+        pipe += (new Each(_, inputFields(expr), new ExpressionFilter(expr.asInstanceOf[Column[Boolean]])))
 
       case _ => throw new QueryException("Don't know what to do with filter node \""+c+"\" in an expression")
     }
@@ -99,4 +103,7 @@ class QueryBuilder[E <: ColumnBase[_]](_query: Query[E], _nc: NamingContext) {
     case a :: l => error("todo")
     case Nil => ()
   }
+
+  private def inputFields(c: ColumnBase[_]) = EvaluationChain.inputFields(c)
+  private def outputFields(c: ColumnBase[_]) = EvaluationChain.outputFields(c)
 }

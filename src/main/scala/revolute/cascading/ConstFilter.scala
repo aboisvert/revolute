@@ -4,7 +4,7 @@ import cascading.flow.FlowProcess
 import cascading.operation.{Filter, FilterCall, OperationCall}
 import cascading.tuple.Fields
 
-import revolute.query.{ColumnBase, Column}
+import revolute.query.{ColumnBase, Column, EvaluationContext}
 
 import scala.collection._
 
@@ -62,17 +62,24 @@ object IsFilter extends Filter[Any] with java.io.Serializable {
   def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
 }
 
-class ExpressionFilter(val expr: Column[Boolean]) extends Filter[Any] with java.io.Serializable {
+class ExpressionFilter(val column: Column[Boolean]) extends Filter[Any] with java.io.Serializable {
+  @transient var chain: EvaluationChain = null
+
   override def isRemove(flowProcess: FlowProcess[_], filterCall: FilterCall[Any]) = {
-    ! (expr.evaluate(filterCall.getArguments).asInstanceOf[Boolean])
+    chain.tupleEntry = filterCall.getArguments
+    val tuple = chain.context.nextTuple()
+    if (tuple == null) true
+    else ! (tuple.get(0).asInstanceOf[Boolean])
   }
 
   override def isSafe = true
-  override def getNumArgs = expr.arity
+  override def getNumArgs = EvaluationChain.inputFields(column).size
   override def getFieldDeclaration = Fields.ALL
-  override def prepare(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
+  override def prepare(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {
+    chain = EvaluationChain.prepare(column, operationCall.getArgumentFields)
+  }
   override def flush(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
   override def cleanup(flowProcess: FlowProcess[_], operationCall: OperationCall[Any]) {}
 
-  override def toString = "ExpressionFilter(%s)" format expr
+  override def toString = "ExpressionFilter(%s)" format column
 }

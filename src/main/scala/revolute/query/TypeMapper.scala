@@ -62,11 +62,34 @@ object TypeMapper {
   }
 
   implicit def mapTypeMapper[K, V](implicit k: TypeMapper[K], v: TypeMapper[V]): TypeMapper[Map[K, V]] = new MapTypeMapper[K, V]
+
+  implicit def tuple1TypeMapper[T1](implicit t1: TypeMapper[T1]) = new BaseTypeMapper[Tuple1[T1]] {
+    def apply = new TypeMapperDelegate[Tuple1[T1]] {
+      override val zero = Tuple1(t1.apply.zero)
+    }
+  }
+
+  implicit def tuple2TypeMapper[T1, T2](implicit t1: TypeMapper[T1], t2: TypeMapper[T2]) = new BaseTypeMapper[(T1, T2)] {
+    def apply = new TypeMapperDelegate[(T1, T2)] {
+      override val zero = (t1.apply.zero, t2.apply.zero)
+    }
+  }
+
+  implicit def tuple3TypeMapper[T1, T2, T3](implicit t12: TypeMapper[(T1, T2)], t3: TypeMapper[T3]) = new BaseTypeMapper[(T1, T2, T3)] {
+    def apply = new TypeMapperDelegate[(T1, T2, T3)] {
+      override val zero = {
+        val (zero1, zero2) = t12.apply.zero
+        (zero1, zero2, t3.apply.zero)
+      }
+    }
+  }
 }
 
 trait BaseTypeMapper[T] extends TypeMapper[T] {
   def getBaseTypeMapper[U](implicit ev: Option[U] =:= T) =
     throw new QueryException("A BaseTypeMapper should not have an Option type")
+
+  override def toString = getClass.getSimpleName
 }
 
 abstract class OptionTypeMapper[T](val base: TypeMapper[T]) extends TypeMapper[Option[T]]

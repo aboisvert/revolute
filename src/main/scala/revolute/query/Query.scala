@@ -13,9 +13,11 @@ object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
 /** Query monad: contains AST for query's projection, accumulated restrictions and other modifiers. */
 class Query[E <: ColumnBase[_]](
   val value: E,
-  val cond: List[Column[_]],
+  val cond: List[ColumnBase[_]],
   val modifiers: List[QueryModifier]
-) extends ColumnBase[E#_T] {
+) extends SyntheticColumn[E#_T] {
+
+  override val nameHint = "Query(%s)" format value.nameHint
 
   def flatMap[F <: ColumnBase[_]](f: E => Query[F]): Query[F] = {
     val q = f(value)
@@ -26,12 +28,12 @@ class Query[E <: ColumnBase[_]](
 
   def >>[F <: ColumnBase[F]](q: Query[F]): Query[F] = flatMap(_ => q)
 
-  def filter[T <: ColumnBase[_]](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] =
+  def filter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] =
     new Query(value, wt(f(value), cond), modifiers)
 
-  def withFilter[T <: ColumnBase[_]](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
+  def withFilter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
 
-  def where[T <: Column[_]](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
+  def where[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
 
   def groupBy(by: Column[_]*) =
     new Query[E](value, cond, modifiers ::: by.view.map(c => new Grouping(By(c))).toList)
@@ -52,8 +54,6 @@ class Query[E <: ColumnBase[_]](
     new Query[E](value, cond, mod :: other)
   }
 
-  override def tables = value.tables ++ cond.flatMap(_.tables)
-
   // Query[ColumnBase[_]] only
   def union[O >: E <: ColumnBase[_]](other: Query[O]*) = Union(false, this :: other.toList)
 
@@ -61,38 +61,32 @@ class Query[E <: ColumnBase[_]](
 
   def count(implicit ev: E <:< ColumnBase[_]) = ColumnOps.CountAll(value)
 
-  // def sub(implicit ev: E <:< ColumnBase[_]) = wrap(this)
-
-  def fields(implicit context: NamingContext): Fields = {
-    Console.println("Query.fields on %s" format value)
-
-
-    val f = value match {
-      case nc: NamedColumn[_] => new Fields(nc.columnName.get)
-      case p: Projection[_] => p.fields
-      case _ => Fields.ALL
-    }
-    Console.println("Query.fields: %s" format f)
-    f
-  }
-
   override def toString = "Query(value=%s, cond=%s, modifiers=%s)" format (value, cond, modifiers)
 }
 
 trait CanBeQueryCondition[-T] {
-  def apply(value: T, l: List[Column[_]]): List[Column[_]]
+  def apply(value: T, l: List[ColumnBase[_]]): List[ColumnBase[_]]
 }
 
 object CanBeQueryCondition {
-  implicit object BooleanColumnCanBeQueryCondition extends CanBeQueryCondition[Column[Boolean]] {
-    def apply(value: Column[Boolean], l: List[Column[_]]): List[Column[_]] = value :: l
+
+  implicit object BooleanColumnCanBeQueryCondition extends CanBeQueryCondition[ColumnBase[Boolean]] {
+    override def apply(value: ColumnBase[Boolean], l: List[ColumnBase[_]]): List[ColumnBase[_]] = value :: l
   }
-  implicit object BooleanOptionColumnCanBeQueryCondition extends CanBeQueryCondition[Column[Option[Boolean]]] {
-    def apply(value: Column[Option[Boolean]], l: List[Column[_]]): List[Column[_]] = value :: l
+
+  implicit object BooleanOptionColumnCanBeQueryCondition extends CanBeQueryCondition[ColumnBase[Option[Boolean]]] {
+    override def apply(value: ColumnBase[Option[Boolean]], l: List[ColumnBase[_]]): List[ColumnBase[_]] = value :: l
   }
+
   implicit object BooleanCanBeQueryCondition extends CanBeQueryCondition[Boolean] {
-    def apply(value: Boolean, l: List[Column[_]]): List[Column[_]] =
+    override def apply(value: Boolean, l: List[ColumnBase[_]]): List[ColumnBase[_]] =
       if (value) l else new ConstColumn(Some("BooleanCanBeQueryCondition"), false)(TypeMapper.BooleanTypeMapper) :: Nil
+  }
+
+  implicit def tuple2CanBeQueryCondition[T1, T2](p: Projection2[T1, T2]) = new Tuple2CanBeQueryCondition[T1, T2]
+
+  class Tuple2CanBeQueryCondition[T1, T2] extends CanBeQueryCondition[Projection2[T1, T2]] {
+    override def apply(value: Projection2[T1, T2], l: List[ColumnBase[_]]): List[ColumnBase[_]] = List(value._1, value._2)
   }
 }
 

@@ -1,7 +1,7 @@
 package revolute.query
 
 import cascading.tuple.TupleEntry
-import revolute.util.{Converter, Combinations}
+import revolute.util.{Converter, Combinations, Identifier, Tuple}
 import scala.collection._
 
 abstract class ColumnOption[+T]
@@ -14,16 +14,6 @@ object ColumnOptions {
 
 trait SimpleFunction {
   val name: String
-}
-
-object SimpleFunction {
-  /*
-  def apply[T : TypeMapper](fname: String): (Seq[Column[_]] => OperatorColumn[T] with SimpleFunction) =
-    (paramsC: Seq[Column[_]]) =>
-      new OperatorColumn[T] with SimpleFunction {
-        val name = fname
-      }
-  */
 }
 
 trait SimpleScalarFunction
@@ -100,7 +90,7 @@ trait ColumnOps[B1, P1] {
     om(Sum(leftOperand, tm))
   */
 
-  def as[T2](implicit conv: Converter[P1, T2], tm: TypeMapper[T2]): OperatorColumn[T2]  = new As[P1, T2](leftOperand)
+  def asColumnOf[T2](implicit conv: Converter[P1, T2], tm: TypeMapper[T2]): OperatorColumn[T2]  = new AsColumnOf[P1, T2](leftOperand)
 
   def mapValue[T2](f: P1 => T2)(implicit tm: TypeMapper[T2]) = new MapValue[P1, T2](leftOperand, f)
 
@@ -168,13 +158,10 @@ object ColumnOps {
   import OperationType._
 
   // case class In(left: ColumnBase[_], right: ColumnBase[_]) extends OperatorColumn[Boolean] with ColumnOps[Boolean,Boolean]
-  case class Count(query: ColumnBase[_]) extends ColumnBase[Int] {
-    val name = "count"
-    override def tables = query.tables
+  case class Count(query: ColumnBase[_]) extends SyntheticColumn[Int] {
   }
 
-  case class CountAll(query: ColumnBase[_]) extends ColumnBase[Int] {
-    override def tables = query.tables
+  case class CountAll(query: ColumnBase[_]) extends SyntheticColumn[Int] {
   }
 
   /*
@@ -231,44 +218,34 @@ object ColumnOps {
     val left: Column[L]
 
     override val leftOperand: Column[O] = this
-    override def operationType: OperationType = PureMapper
 
     def apply(leftValue: L): I
 
-    override final def evaluate(args: TupleEntry): Any = {
-      left.operationType match {
-        case PureMapper =>
-          val leftResult = left.evaluate(args).asInstanceOf[L]
-          apply(leftResult)
+    override def chainEvaluation(parent: EvaluationContext): EvaluationContext = new EvaluationContext {
+      lazy val pos = parent.position(left)
 
-        case NullableMapper =>
-          val leftResult = left.evaluate(args).asInstanceOf[L]
-          if (leftResult == null) null
-          else apply(leftResult)
+      private[this] var value: I = _
 
-        case OptionMapper =>
-          val leftResult = left.evaluate(args).asInstanceOf[Option[L]]
-          if (leftResult == null) null
-          else leftResult match {
-            case Some(value) => apply(value)
-            case None        => null
-          }
-
-        case SeqMapper =>
-          val leftResult = left.evaluate(args).asInstanceOf[Seq[L]]
-          if (leftResult == null) null
-          else operationType match {
-            case PureMapper | NullableMapper | OptionMapper => leftResult map apply
-            case SeqMapper =>
-              val r = leftResult map apply
-              if (r == null) null
-              else r.asInstanceOf[Seq[Seq[I]]].filter(_ != null).flatten
-          }
+      private[this] val tuple = new Tuple {
+        override def get(pos: Int) = value
       }
+
+      override def nextTuple(): Tuple = {
+        Console.println("unary next tuple %s" format nameHint)
+        val nextTuple = parent.nextTuple()
+        Console.println("unary next tuple %s: %s" format (nameHint, nextTuple))
+        if (nextTuple == null) return null
+        value = apply(nextTuple.get(pos).asInstanceOf[L])
+        Console.println("unary next tuple2 %s: %s" format (nameHint, tuple))
+        tuple
+      }
+
+      override def position(c: ColumnBase[_]) = 0
+
+      override def toString = "%s.EvaluationContext(parent=%s)" format (UnaryOperator.this.toString, parent)
     }
 
-    final override def arguments = left.arguments
-    final override def tables = left.tables
+    final override def dependencies = Set(left)
   }
 
   abstract class BinaryOperator[L, R, T, O: TypeMapper] extends OperatorColumn[O] {
@@ -276,99 +253,47 @@ object ColumnOps {
     val right: Column[R]
 
     override val leftOperand: Column[O] = this
-    override def operationType: OperationType = PureMapper
 
     def apply(leftValue: L, rightValue: R): T
 
-    override final def evaluate(args: TupleEntry): Any = {
-      val leftResult = left.evaluate(args)
+    override def chainEvaluation(parent: EvaluationContext): EvaluationContext = new EvaluationContext {
+      lazy val leftPos = parent.position(left)
+      lazy val rightPos = parent.position(right)
 
-      // handle zeros left
-      if      (left.operationType != PureMapper   && leftResult == null)      null
-      else if (left.operationType == OptionMapper && leftResult == None)      null
-      else if (left.operationType == SeqMapper    && leftResult == Seq.empty) null
-      else {
-        // no zeros on the left, evaluate right
-        val rightResult = right.evaluate(args)
+      private[this] var value: T = null.asInstanceOf[T]
 
-        // handle zeros on right
-        if      (right.operationType != PureMapper   && rightResult == null)      null
-        else if (right.operationType == OptionMapper && rightResult == None)      null
-        else if (right.operationType == SeqMapper    && rightResult == Seq.empty) null
+      private[this] val tuple = new Tuple {
+        override def get(pos: Int) = value
+        override def toString = "BinaryOperator.Tuple(%s)" format value
+      }
 
-        // ok, we have to evaluate this expression
-        else (left.operationType, right.operationType) match {
-          case (PureMapper | NullableMapper, PureMapper | NullableMapper) =>
-            apply(leftResult.asInstanceOf[L], rightResult.asInstanceOf[R])
+      override def nextTuple(): Tuple = {
+        Console.println("binary next tuple %s" format nameHint)
+        val nextTuple = parent.nextTuple()
+        if (nextTuple == null) return null
+        val left = nextTuple.get(leftPos).asInstanceOf[L]
+        val right = nextTuple.get(rightPos).asInstanceOf[R]
+        Console.println("binary eval %s: left=%s right=%s" format (nameHint, left, right))
+        value = apply(left, right)
+        Console.println("binary next tuple %s: %s" format (nameHint, tuple))
+        tuple
+      }
 
-          case (PureMapper | NullableMapper, OptionMapper) =>
-            apply(leftResult.asInstanceOf[L], rightResult.asInstanceOf[Option[R]].get)
+      override def position(c: ColumnBase[_]) = 0
 
-          case (PureMapper | NullableMapper, SeqMapper) =>
-            val leftValue = leftResult.asInstanceOf[L]
-            val result = rightResult.asInstanceOf[Seq[R]] map { rightValue => apply(leftValue, rightValue) }
-            operationType match {
-              case PureMapper | NullableMapper | OptionMapper => result
-              case SeqMapper =>
-                if (result == null) null
-                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
-            }
+      override def toString = "%s.EvaluationContext(parent=%s)" format (BinaryOperator.this.toString, parent)
+    }
 
-          case (SeqMapper, PureMapper | NullableMapper) =>
-            val rightValue = rightResult.asInstanceOf[R]
-            val result = leftResult.asInstanceOf[Seq[L]] map { leftValue => apply(leftValue, rightValue) }
-            operationType match {
-              case PureMapper | NullableMapper | OptionMapper => result
-              case SeqMapper =>
-                if (result == null) null
-                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
-            }
+    final override def dependencies = Set(left, right)
 
-          case (OptionMapper, PureMapper | NullableMapper) =>
-            apply(leftResult.asInstanceOf[Option[L]].get, rightResult.asInstanceOf[R])
-
-          case (OptionMapper, OptionMapper) =>
-            apply(leftResult.asInstanceOf[Option[L]].get, rightResult.asInstanceOf[Option[R]].get)
-
-          case (OptionMapper, SeqMapper) =>
-            val leftValue = leftResult.asInstanceOf[Option[L]].get
-            val result = rightResult.asInstanceOf[Seq[R]] map { rightValue => apply(leftValue, rightValue) }
-            operationType match {
-              case PureMapper | NullableMapper | OptionMapper => result
-              case SeqMapper =>
-                if (result == null) null
-                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
-            }
-
-          case (SeqMapper, OptionMapper) =>
-            val leftValue = leftResult.asInstanceOf[Option[L]].get
-            val result = rightResult.asInstanceOf[Seq[R]] map { rightValue => apply(leftValue, rightValue) }
-            operationType match {
-              case PureMapper | NullableMapper | OptionMapper => result
-              case SeqMapper =>
-                if (result == null) null
-                else result.asInstanceOf[Seq[Seq[T]]].filter(_ != null).flatten
-            }
-
-          case (SeqMapper, SeqMapper) =>
-            val leftValues  = leftResult.asInstanceOf[Seq[L]].toIndexedSeq
-            val rightValues = rightResult.asInstanceOf[Seq[R]].toIndexedSeq
-            val combinations = Combinations.combinations(IndexedSeq(leftValues, rightValues)).toSeq
-            combinations map { tuple => apply(tuple(0).asInstanceOf[L], tuple(1).asInstanceOf[R]) }
-        } // else
-
-      } // else-if
-    } // evaluate
-
-    final override def arguments = left.arguments ++ right.arguments
-    final override def tables = left.tables ++ right.tables
   }
 
-  case class As[T1, T2](val left: Column[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
+  case class AsColumnOf[T1, T2](val left: Column[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, T2, T2]
   {
+    override val nameHint = "AsColumnOf[%s](%s)" format (tm.getClass.getSimpleName, left.nameHint)
     override def apply(leftValue: T1): T2 = conv(leftValue)
-    override def toString = "As(%s, type=%s)" format (left.columnName getOrElse "N/A", tm)
+    override def toString = "AsColumnOf(%s, type=%s)" format (left, tm.getClass.getSimpleName)
   }
 
   case class MapValue[T1, T2](val left: Column[T1], f: T1 => T2)(implicit tm: TypeMapper[T2])
@@ -381,14 +306,14 @@ object ColumnOps {
     extends OperatorColumn[T2] with UnaryOperator[T1, Option[T2], T2]
   {
     override def apply(leftValue: T1) = f(leftValue)
-    override def operationType = OptionMapper
+    override def operationType = OperationType.OptionMapper
   }
 
   case class MapPartial[T1, T2](val left: Column[T1], f: PartialFunction[T1, T2])(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, Option[T2], T2]
   {
     override def apply(leftValue: T1) = if (f.isDefinedAt(leftValue)) Some(f(leftValue)) else None
-    override def operationType = OptionMapper
+    override def operationType = OperationType.OptionMapper
   }
 
   case class LessThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
@@ -441,8 +366,7 @@ object ColumnOps {
     override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] equiv (leftValue, rightValue)
   }
 
-  case class CountDistinct(query: ColumnBase[_]) extends ColumnBase[Int] {
-    override def tables = query.tables
+  case class CountDistinct(query: ColumnBase[_]) extends SyntheticColumn[Int] {
   }
 
   case class InSet[T](override val left: Column[T], set: Set[T])
