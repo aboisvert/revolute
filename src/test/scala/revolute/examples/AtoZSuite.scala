@@ -237,5 +237,28 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (new Tuple("u", "yes"))
       result should contain (new Tuple("y", "yes"))
     }
+
+    "support mapping + filtering using mapSeq" in {
+      implicit val _ = context(AtoZ)
+
+      def explode(n: Int) = Seq.tabulate(n) { x => "%d-%d" format (n, x+1) }
+
+      val result = sandbox run {
+        val query = for {
+          abc <- AtoZ
+          exploded <- abc.number mapSeq { n => if (n > 2 && n < 5) explode(n) else Seq.empty }
+        } yield abc.letter ~ exploded
+        query
+      }
+      result.size should be === 7
+      result should contain (new Tuple("c", "3-1"))
+      result should contain (new Tuple("c", "3-2"))
+      result should contain (new Tuple("c", "3-3"))
+      result should contain (new Tuple("d", "4-1"))
+      result should contain (new Tuple("d", "4-2"))
+      result should contain (new Tuple("d", "4-3"))
+      result should contain (new Tuple("d", "4-4"))
+    }
+
   }
 }

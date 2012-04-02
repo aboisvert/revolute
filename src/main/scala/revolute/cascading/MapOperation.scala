@@ -23,15 +23,17 @@ class FlatMapOperation(val projection: Projection[_])
     var tuple = chain.context.nextTuple()
     Console.println("tuple: " + tuple)
     while (tuple != null) {
-      val result = new cascading.tuple.Tuple()
-      var i = 0
-      while (i < chain.arity) {
-        val value = tuple.get(i)
-        result.add(value)
-        i += 1
-      }
-      Console.println("add: " + result)
-      functionCall.getOutputCollector().add(result)
+      try {
+        val result = new cascading.tuple.Tuple()
+        var i = 0
+        while (i < chain.arity) {
+          val value = tuple.get(i)
+          result.add(value)
+          i += 1
+        }
+        Console.println("add: " + result)
+        functionCall.getOutputCollector().add(result)
+      } catch { case EvaluationChain.NoValue => /* ignore tuple */ }
       tuple = chain.context.nextTuple()
     }
   }

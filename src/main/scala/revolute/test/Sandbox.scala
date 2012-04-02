@@ -41,6 +41,9 @@ class Sandbox(val outputDir: String) {
   def run[T](query: Query[_ <: ColumnBase[T]])(implicit context: FlowContext): Seq[Tuple] = {
     implicit val _ = context.namingContext
 
+    Console.println()
+    Console.println()
+    Console.println()
     Console.println("query: " + query)
     val qb = new QueryBuilder(query, NamingContext())
     val pipe = qb.build()
@@ -56,6 +59,10 @@ class Sandbox(val outputDir: String) {
     val flow = context.flowConnector.connect(sources, sink, pipe)
     flow.start()
     flow.complete()
+    Console.println("completed query: " + query)
+    Console.println()
+    Console.println()
+    Console.println()
     Sandbox.getTuples(flow)
   }
 }

@@ -98,6 +98,8 @@ trait ColumnOps[B1, P1] {
 
   def mapPartial[T2](f: PartialFunction[P1,T2])(implicit tm: TypeMapper[T2]) = new MapPartial[P1, T2](leftOperand, f)
 
+  def mapSeq[T2](f: P1 => Seq[T2])(implicit tm: TypeMapper[T2]) = new MapSeq[P1, T2](leftOperand, f)
+
   // Boolean only
   def &&(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): OperatorColumn[Boolean] =
     And(leftOperand.asInstanceOf[Column[Boolean]], b.asInstanceOf[Column[Boolean]])
@@ -285,7 +287,6 @@ object ColumnOps {
     }
 
     final override def dependencies = Set(left, right)
-
   }
 
   case class AsColumnOf[T1, T2](val left: Column[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
@@ -314,6 +315,13 @@ object ColumnOps {
   {
     override def apply(leftValue: T1) = if (f.isDefinedAt(leftValue)) Some(f(leftValue)) else None
     override def operationType = OperationType.OptionMapper
+  }
+
+  case class MapSeq[T1, T2](val left: Column[T1], f: T1 => Seq[T2])(implicit tm: TypeMapper[T2])
+    extends OperatorColumn[T2] with UnaryOperator[T1, Seq[T2], T2]
+  {
+    override def apply(leftValue: T1) = f(leftValue)
+    override def operationType = OperationType.SeqMapper
   }
 
   case class LessThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])

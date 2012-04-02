@@ -3,12 +3,14 @@ package revolute.cascading
 import cascading.tuple.{Fields, TupleEntry}
 
 import revolute.query.{AbstractTable, ColumnBase, ColumnOps, EvaluationContext, NamedColumn, OperationType, Projection}
-import revolute.util.{Identifier, NamingContext, Tuple}
+import revolute.util.{Combinations, Identifier, NamingContext, Tuple}
 
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 
 object EvaluationChain {
+  object NoValue extends scala.util.control.ControlThrowable
+
   def prepare(c: ColumnBase[_], fields: Fields): EvaluationChain = {
     new EvaluationChain(c)
   }
@@ -114,41 +116,15 @@ class EvaluationChain(val c: ColumnBase[_]) {
 
         val orderedDependencies = c.dependencies.toSeq
         val subContexts = orderedDependencies map recurse toArray
+        val types = orderedDependencies map (_.operationType) toArray
 
-        val subContext = new EvaluationContext {
-          lazy val subPositions = subContexts zip orderedDependencies map { case (c, d) => c.position(d) }
-          private[this] val tuple = new Tuple {
-            val values = new Array[Tuple](orderedDependencies.size)
-            def get(pos: Int) = values(pos).get(subPositions(pos))
-            override def toString = "SubTuple(%s, %s, %s)" format (orderedDependencies, values.toList, subPositions.toList)
-          }
-          lazy val positions = orderedDependencies.zipWithIndex.toMap;
-          override def nextTuple(): Tuple = {
-            //Console.println("EvaluationChainContext nextTuple()")
-            var i = 0
-            while (i < subContexts.length) {
-              val context = subContexts(i)
-              val next = context.nextTuple()
-              Console.println("next: " + context + " next: " + next)
-              if (next == null) return null
-              tuple.values(i) = next
-              i += 1
-            }
-            Console.println("EvaluationChainContext nextTuple(): " + tuple)
-            tuple
-          }
-          override def position(c: ColumnBase[_]) = positions(c)
-          override def toString = "EvaluationChainContext(%s)" format subContexts.toList
+        var context: EvaluationContext = if (types contains OperationType.SeqMapper) {
+          new OneToZeroOrManyEvaluationContext(c, orderedDependencies, subContexts, types)
+        } else {
+          new OneToZeroOrOneEvaluationContext(c, orderedDependencies, subContexts, types)
         }
 
-        var context = c.chainEvaluation(subContext)
-
-        c.operationType match {
-          case PureMapper     => // nothing
-          case NullableMapper => context = new FilterNull(context)
-          case OptionMapper   => context = new FilterNone(context)
-          case SeqMapper      => context = new ExplodeSeq(context)
-        }
+        context = c.chainEvaluation(context)
 
         if (reverseDependencies.isDefinedAt(c) && reverseDependencies(c).size > 1) {
           val sharedState = sharedStates.getOrElseUpdate(c, new SharedEvaluationContext.SharedState(context))
@@ -215,21 +191,35 @@ class SharedEvaluationContext(val shared: SharedEvaluationContext.SharedState) e
   override def toString = "SharedEvaluationContext(shared=%s)" format shared
 }
 
-class IntermediateEvaluationContext(
+class OneToZeroOrOneEvaluationContext(
   val c: ColumnBase[_],
   val orderedDependencies: Seq[ColumnBase[_]],
-  val subContexts: Array[EvaluationContext]
+  val subContexts: Array[EvaluationContext],
+  val types: Array[OperationType]
 ) extends EvaluationContext {
+  import OperationType._
 
-  private[this] lazy val subPositions = subContexts zip orderedDependencies map { case (c, d) => c.position(d) }
+  private[this] val positions = orderedDependencies.zipWithIndex.toMap
+
+  private[this] val subPositions = subContexts zip orderedDependencies map { case (c, d) => c.position(d) }
 
   private[this] val tuple = new Tuple {
     val values = new Array[Tuple](orderedDependencies.size)
-    def get(pos: Int) = values(pos).get(subPositions(pos))
+    def get(pos: Int) = {
+      val value = values(pos).get(subPositions(pos))
+      if (types(pos) == PureMapper) {
+        value
+      } else if (types(pos) == NullableMapper) {
+        if (value == null) throw EvaluationChain.NoValue
+        value
+      } else if (types(pos) == OptionMapper) {
+        if (value == null) throw EvaluationChain.NoValue
+        if (None == value) throw EvaluationChain.NoValue
+        value.asInstanceOf[Option[Any]].get
+      }
+    }
     override def toString = "SubTuple(%s, %s, %s)" format (orderedDependencies, values.toList, subPositions.toList)
   }
-
-  private[this] lazy val positions = orderedDependencies.zipWithIndex.toMap;
 
   override def nextTuple(): Tuple = {
     //Console.println("EvaluationChainContext nextTuple()")
@@ -251,74 +241,78 @@ class IntermediateEvaluationContext(
   override def toString = "IntermediateEvaluationContext(%s)" format subContexts.toList
 }
 
-class FilterNull(val parent: EvaluationContext) extends EvaluationContext {
-  private[this] var tuple: Tuple = _
+class OneToZeroOrManyEvaluationContext(
+  val c: ColumnBase[_],
+  val orderedDependencies: Seq[ColumnBase[_]],
+  val subContexts: Array[EvaluationContext],
+  val types: Array[OperationType]
+) extends EvaluationContext {
+  import OperationType._
 
-  override def nextTuple(): Tuple = {
-    do {
-      tuple = parent.nextTuple()
-      if (tuple == null) return null
-    } while (tuple.get(0) != null)
-    tuple
+  private[this] val positions = orderedDependencies.zipWithIndex.toMap
+
+  private[this] val subPositions = subContexts zip orderedDependencies map { case (c, d) => c.position(d) }
+
+
+  private[this] val subValues = Array.fill(types.length) { new ArrayBuffer[Any]() }
+  private[this] var iterator: Iterator[Seq[Any]] = Iterator.empty
+
+  private[this] var current: Seq[Any] = _
+
+  private[this] val tuple = new Tuple {
+    def get(pos: Int) = current(pos)
+    override def toString = "OneToZeroOrManyTuple(%s)" format (current)
   }
 
-  override def position(c: ColumnBase[_]) = 0
-
-  override def toString = "FilterNull(%s)" format tuple
-}
-
-class FilterNone(val parent: EvaluationContext) extends EvaluationContext {
-  private[this] var tuple: SingleValueTuple = new SingleValueTuple()
-
   override def nextTuple(): Tuple = {
-    tuple.value = null
-    do {
-      val next = parent.nextTuple()
-      if (next == null) return null
+    //Console.println("EvaluationChainContext nextTuple()")
+    if (!iterator.hasNext) {
+      var i = 0
+      while (i < types.length) {
+        subValues(i).clear()
+        val context = subContexts(i)
+        val next = context.nextTuple()
+        Console.println("next: " + context + " next: " + next)
+        if (next == null) return null
 
-      val value = next.get(0).asInstanceOf[Option[Any]]
-      if (value != null && value != None) {
-        tuple.value = value.get
+        types(i) match {
+          case PureMapper =>
+            val value = next.get(0)
+            subValues(i) += value
+
+          case NullableMapper =>
+            val value = next.get(0)
+            if (value != null) subValues(i) += value
+            else return null
+
+          case OptionMapper   =>
+            val value = next.get(0).asInstanceOf[Option[Any]]
+            if (value != null && None != value) subValues(i) += value.get
+            else return null
+
+          case SeqMapper      =>
+            val values = next.get(0).asInstanceOf[Seq[Any]]
+            if (values != null && values.size > 0) subValues(i) ++= values
+            else return null
+        }
+
+        i += 1
       }
-    } while (tuple.value == null)
-    tuple
-  }
-
-  override def position(c: ColumnBase[_]) = 0
-
-  override def toString = "FilterNone(%s)" format tuple
-}
-
-class ExplodeSeq(val parent: EvaluationContext) extends EvaluationContext {
-  private[this] var seq: Array[Any] = null
-  private[this] var tuple: SingleValueTuple = new SingleValueTuple()
-  private[this] var pos = -1
-
-  override def nextTuple(): Tuple = {
-    if (seq != null && pos < seq.length) {
-      tuple.value = seq(pos)
-      pos += 1
-      return tuple
+      iterator = Combinations.combinations(subValues)
+      current = iterator.next()
+      Console.println("EvaluationChainContext nextTuple(): " + tuple)
+      tuple
+    } else if (iterator.hasNext) {
+      current = iterator.next()
+      tuple
+    } else {
+      null
     }
-
-    seq = null
-    do {
-      val next = parent.nextTuple()
-      if (next == null) return null
-
-      val value = next.get(0).asInstanceOf[Seq[Any]]
-      if (value != null && value.nonEmpty) {
-        seq = value.toArray
-        pos = 0
-      }
-    } while (seq == null)
-    tuple.value = seq(0)
-    tuple
   }
 
-  override def position(c: ColumnBase[_]) = 0
+  override def position(c: ColumnBase[_]) = positions(c)
 
-  override def toString = "ExplodeSeq(%s)" format tuple
+  override def toString = "OneToZeroOrManyEvaluationContext(%s)" format subContexts.toList
 }
 
 class SingleValueTuple(var value: Any = null) extends Tuple {
