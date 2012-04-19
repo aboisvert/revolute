@@ -28,7 +28,8 @@ class Query[E <: ColumnBase[_]](
   val cond: List[ColumnBase[_]],
   val modifiers: List[QueryModifier]
 ) extends SyntheticColumn[E#_T] {
-
+  type QT = E
+  
   Console.println("new query: " + value)
 
   {

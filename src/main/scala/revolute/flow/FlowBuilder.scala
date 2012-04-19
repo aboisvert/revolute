@@ -53,7 +53,7 @@ class FlowBuilder(val context: FlowContext) {
 
   private val statements = ArrayBuffer[Statement]()
 
-  def insert[Q <: Query[ColumnBase[_]]](q: Q) = {
+  def insert[Q <: Query[_ <: ColumnBase[_]]](q: Q) = {
     new {
       def into[T <: Table[_]](t: T): Insert[Q, T] = {
         val i = new Insert(q, t, context)
@@ -80,9 +80,9 @@ sealed trait Statement {
   def sink: Tap
 }
 
-class Insert[Q <: Query[ColumnBase[_]], T <: Table[_]](val query: Q, val table: T, context: FlowContext) extends Statement {
+class Insert[Q <: Query[_ <: ColumnBase[_]], T <: Table[_]](val query: Q, val table: T, context: FlowContext) extends Statement {
   def pipe = {
-    val qb = new QueryBuilder(query, NamingContext())
+    val qb = new QueryBuilder(query.asInstanceOf[Query[query.QT]], NamingContext())
     qb.pipe
   }
 
