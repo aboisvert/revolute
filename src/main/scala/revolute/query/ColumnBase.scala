@@ -160,3 +160,18 @@ object NullOrdering extends Ordering[AnyRef] {
     return 0
   }
 }
+
+/** A column taken from the output of a Query. */
+class QueryColumn[T: TypeMapper, C <: ColumnBase[T]](val query: Query[C], val column: C)
+  extends OperatorColumn[C#_T] with ColumnOps[C#_T, C#_T]
+{
+  override val nameHint = column.nameHint
+
+  override def dependencies = Set(query.value)
+
+  override val leftOperand = this
+
+  override val operationType = OperationType.PureMapper
+
+  override def chainEvaluation(context: EvaluationContext): EvaluationContext = error("should not be called")
+}

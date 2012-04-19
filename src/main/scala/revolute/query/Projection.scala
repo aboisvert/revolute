@@ -21,7 +21,7 @@ abstract class Projection[T <: Product] extends ColumnBase[T] {
 
   override val nameHint = "Projection" + projectionArity
 
-  override def dependencies = columns.toSet
+  override def dependencies: Set[ColumnBase[_]] = columns.toSet
 
   override val operationType = OperationType.PureMapper
 
@@ -35,6 +35,13 @@ abstract class Projection[T <: Product] extends ColumnBase[T] {
   }
 
   override def toString = "Projection%d(%s)" format (projectionArity, columns.toList)
+
+  // def innerJoin[U <: Query[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Inner)
+  /*
+  def leftJoin[U <: Projection[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Left)
+  def rightJoin[U <: Projection[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Right)
+  def outerJoin[U <: Projection[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Outer)
+  */
 }
 
 object Projection {
@@ -293,3 +300,7 @@ extends Tuple10(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10) with Projection[(T1,T2,T3,T4,T5,
 }
 
 */
+
+class NamedProjection[P <: Projection[_]](val query: Query[P]) extends Query[P](query.value, query.cond, query.modifiers) {
+  def * : P = query.value
+}

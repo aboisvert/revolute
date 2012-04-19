@@ -46,14 +46,14 @@ class Sandbox(val outputDir: String) {
     Console.println()
     Console.println("query: " + query)
     val qb = new QueryBuilder(query, NamingContext())
-    val pipe = qb.build()
+    val pipe = qb.pipe
     Console.println("pipe: " + pipe)
 
-    val sources: java.util.Map[String, Tap] = JavaConversions.mapAsJavaMap {
-      Console.println("<sources>\n" + (context.sources mkString "\n"))
-      Console.println("</sources>")
-      context.sources map { case (table, tap) => (table.tableName, tap: Tap) } toMap
-    }
+    val tables = qb.distinctTableIds.distinctIds // EvaluationChain.tables(query.value) map (_.tableName)
+    val sources = FlowBuilder.sources(tables, context)
+    Console.println("sources: " + sources)
+    //Console.println("<sources>\n" + (sources mkString "\n"))
+    //Console.println("</sources>")
     val sink = new FileTap(new TextDelimited(outputFields(query.value), "\t"), outputFile(outputDir), SinkMode.REPLACE)
     Console.println("sink: " + sink)
     val flow = context.flowConnector.connect(sources, sink, pipe)

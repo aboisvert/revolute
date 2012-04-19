@@ -5,7 +5,6 @@ import cascading.tap.SinkMode
 import cascading.tap.local.FileTap
 import cascading.tuple.Tuple
 import cascading.scheme.local.TextDelimited
-
 import revolute.flow._
 import revolute.query._
 import revolute.query.ImplicitConversions._
@@ -13,10 +12,8 @@ import revolute.util._
 import revolute.util.Compat._
 import revolute.util.Converters._
 import revolute.test.Sandbox
-
 import org.scalatest.WordSpec
 import org.scalatest.matchers.ShouldMatchers
-
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 
@@ -35,23 +32,15 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     def * = letter ~ word
   }
 
-  def context(tables: AbstractTable[_]*) = {
-    FlowContext.local { context =>
-      if (tables contains AtoZ)
-        context.sources += (AtoZ -> new FileTap(new TextDelimited(inputFields(AtoZ.*), " "), "target/test/resources/a-z.txt"))
-      if (tables contains Words)
-        context.sources += (Words -> new FileTap(new TextDelimited(inputFields(Words.*), " "), "target/test/resources/words.txt"))
-      context
-    }
+  implicit val context = FlowContext.local { context =>
+    context.sources += (AtoZ -> (() => new FileTap(new TextDelimited(inputFields(AtoZ.*), " "), "target/test/resources/a-z.txt")))
+    context.sources += (Words -> (() => new FileTap(new TextDelimited(inputFields(Words.*), " "), "target/test/resources/words.txt")))
   }
 
   val sandbox = new Sandbox("target/test/output")
 
   "simple query" should {
-
     "map single field" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for (az <- AtoZ) yield az.letter
       }
@@ -61,8 +50,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "map multiple fields" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for (az <- AtoZ) yield az.letter ~ az.number
       }
@@ -73,8 +60,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "filter tuples using where and ===" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for {
           az <- AtoZ where (_.letter === "a")
@@ -84,8 +69,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "filter tuples using if and ===" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for {
           az <- AtoZ if (az.letter === "a")
@@ -97,8 +80,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "concatenate fields and coerse field to string" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for {
           concat <- AtoZ.letter ++ AtoZ.number.asColumnOf[String]
@@ -111,8 +92,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "filter tuples with a set" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for {
           abc <- AtoZ where (_.letter in Set("a", "b", "c"))
@@ -126,8 +105,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "apply multiple conditions" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for {
           _ <- AtoZ where (_.letter in Set("a", "b"))
@@ -139,8 +116,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "filter using multiple conditions with logical AND" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         for {
           _ <- AtoZ where { az => az.number > 5 && az.number <= 7 }
@@ -152,26 +127,10 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (new Tuple("g", "7"))
     }
 
-    "join tables implicitly" in {
-      implicit val _ = context(AtoZ, Words)
-
-      val result = sandbox run {
-        for {
-          az <- AtoZ
-          words <- Words if az.letter is words.letter
-        } yield az.letter ~ az.number ~ words.word
-      }
-      result.size should be === 8
-      result should contain (new Tuple("a", "1", "apple"))
-      result should contain (new Tuple("h", "8", "house"))
-    }
-
     "join tables using innerJoin" in {
-      implicit val _ = context(AtoZ, Words)
-
       val result = sandbox run {
         for {
-          Join(az, words) <- ((AtoZ innerJoin Words) on (_.letter is _.letter))
+          Join(az, words) <- (AtoZ.innerJoin(columnToQuery(Words))) on (_.letter is _.letter)
         } yield az.letter ~ az.number ~ words.word
         /*
         AtoZ innerJoin Words on (_.letter is _.letter) map { case Join(az, words) =>
@@ -184,9 +143,48 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (new Tuple("h", "8", "house"))
     }
 
-    "allow mapping values using an inlined closure" in {
-      implicit val _ = context(AtoZ)
+    "join previous query using innerJoin" in {
+      val result = sandbox run {
+        val lastLetter = new NamedProjection(
+          for {
+            w <- Words
+            last <- Words.letter mapValue (_.last.toString)
+          } yield new Projection1(last)
+        ) {
+          val last = *._1
+        }
 
+        for {
+          Join(lastLetter, words) <- (lastLetter.innerJoin(columnToQuery(Words)) on (_.last is _.letter))
+        } yield lastLetter.last ~ words.word
+      }
+      result.size should be === 8
+      result should contain (new Tuple("a", "apple"))
+      result should contain (new Tuple("h", "house"))
+    }
+
+    "join 3 tables" in {
+      val result = sandbox run {
+        val lastLetter = new NamedProjection(
+          for {
+            w <- Words
+            last <- Words.letter mapValue (_.last.toString)
+          } yield new Projection1(last)
+        ) {
+          val last = *._1
+        }
+
+        for {
+          Join(lastLetter, words) <- lastLetter innerJoin columnToQuery(Words) on (_.last is _.letter)
+          Join(lastLetter, az)    <- lastLetter innerJoin columnToQuery(AtoZ)  on (_.last is _.letter)
+        } yield lastLetter.last ~ az.number ~ words.word
+      }
+      result.size should be === 8
+      result should contain (new Tuple("a", "1", "apple"))
+      result should contain (new Tuple("h", "8", "house"))
+    }
+
+    "allow mapping values using an inlined closure" in {
       val result = sandbox run {
         val query = for {
           abc <- AtoZ
@@ -201,8 +199,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "allow mapping + filtering using mapOption" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         val query = for {
           abc <- AtoZ
@@ -220,8 +216,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "allow mapping + filtering using mapPartial" in {
-      implicit val _ = context(AtoZ)
-
       val result = sandbox run {
         val query = for {
           abc <- AtoZ
@@ -239,8 +233,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     }
 
     "support mapping + filtering using mapSeq" in {
-      implicit val _ = context(AtoZ)
-
       def explode(n: Int) = Seq.tabulate(n) { x => "%d-%d" format (n, x+1) }
 
       val result = sandbox run {
@@ -260,5 +252,24 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (new Tuple("d", "4-4"))
     }
 
+    "join table with intermediate query" in {
+      val result = sandbox run {
+        val complement = new NamedProjection(
+          for {
+            az <- AtoZ
+            complement <- az.number mapValue (27 - _)
+          } yield az.letter ~ complement
+        ) {
+          val letter ~ complement = *
+        }
+
+        for {
+          Join(az, c) <- (AtoZ innerJoin complement) on (_.letter is _.letter)
+        } yield az.letter ~ az.number ~ c.complement
+      }
+      result.size should be === 26
+      result should contain (new Tuple("a", "1", "26"))
+      result should contain (new Tuple("z", "26", "1"))
+    }
   }
 }

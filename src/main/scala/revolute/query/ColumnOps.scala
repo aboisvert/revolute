@@ -22,9 +22,9 @@ trait SimpleScalarFunction
 trait ColumnOps[B1, P1] {
   import ColumnOps._
 
-  protected val leftOperand: Column[P1]
+  protected val leftOperand: ColumnBase[P1]
 
-  def is(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
+  def is(e: ColumnBase[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
     Is(leftOperand, e)
 
   def ===(e: Column[P1])(implicit o: Ordering[P1]): OperatorColumn[Boolean] =
@@ -217,7 +217,7 @@ object ColumnOps {
   // I == Intermediate Value, e.g. O, Option[O], Seq[O]
   // O == Output
   trait UnaryOperator[L, I, O] extends OperatorColumn[O] {
-    val left: Column[L]
+    val left: ColumnBase[L]
 
     override val leftOperand: Column[O] = this
 
@@ -251,8 +251,8 @@ object ColumnOps {
   }
 
   abstract class BinaryOperator[L, R, T, O: TypeMapper] extends OperatorColumn[O] {
-    val left:  Column[L]
-    val right: Column[R]
+    val left:  ColumnBase[L]
+    val right: ColumnBase[R]
 
     override val leftOperand: Column[O] = this
 
@@ -289,7 +289,7 @@ object ColumnOps {
     final override def dependencies = Set(left, right)
   }
 
-  case class AsColumnOf[T1, T2](val left: Column[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
+  case class AsColumnOf[T1, T2](val left: ColumnBase[T1])(implicit conv: Converter[T1, T2], tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, T2, T2]
   {
     override val nameHint = "AsColumnOf[%s](%s)" format (tm.getClass.getSimpleName, left.nameHint)
@@ -297,52 +297,52 @@ object ColumnOps {
     override def toString = "AsColumnOf(%s, type=%s)" format (left, tm.getClass.getSimpleName)
   }
 
-  case class MapValue[T1, T2](val left: Column[T1], f: T1 => T2)(implicit tm: TypeMapper[T2])
+  case class MapValue[T1, T2](val left: ColumnBase[T1], f: T1 => T2)(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, T2, T2]
   {
     override def apply(leftValue: T1): T2 = f(leftValue)
   }
 
-  case class MapOption[T1, T2](val left: Column[T1], f: T1 => Option[T2])(implicit tm: TypeMapper[T2])
+  case class MapOption[T1, T2](val left: ColumnBase[T1], f: T1 => Option[T2])(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, Option[T2], T2]
   {
     override def apply(leftValue: T1) = f(leftValue)
     override def operationType = OperationType.OptionMapper
   }
 
-  case class MapPartial[T1, T2](val left: Column[T1], f: PartialFunction[T1, T2])(implicit tm: TypeMapper[T2])
+  case class MapPartial[T1, T2](val left: ColumnBase[T1], f: PartialFunction[T1, T2])(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, Option[T2], T2]
   {
     override def apply(leftValue: T1) = if (f.isDefinedAt(leftValue)) Some(f(leftValue)) else None
     override def operationType = OperationType.OptionMapper
   }
 
-  case class MapSeq[T1, T2](val left: Column[T1], f: T1 => Seq[T2])(implicit tm: TypeMapper[T2])
+  case class MapSeq[T1, T2](val left: ColumnBase[T1], f: T1 => Seq[T2])(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, Seq[T2], T2]
   {
     override def apply(leftValue: T1) = f(leftValue)
     override def operationType = OperationType.SeqMapper
   }
 
-  case class LessThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+  case class LessThan[O: scala.math.Ordering](val left: ColumnBase[O], val right: Column[O])
     extends BinaryOperator[O, O, Boolean, Boolean]
   {
     override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] lt (leftValue, rightValue)
   }
 
-  case class LessThanOrEqual[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+  case class LessThanOrEqual[O: scala.math.Ordering](val left: ColumnBase[O], val right: Column[O])
     extends BinaryOperator[O, O, Boolean, Boolean]
   {
     override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] lteq (leftValue, rightValue)
   }
 
-  case class GreaterThan[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+  case class GreaterThan[O: scala.math.Ordering](val left: ColumnBase[O], val right: Column[O])
     extends BinaryOperator[O, O, Boolean, Boolean]
   {
     override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] gt (leftValue, rightValue)
   }
 
-  case class GreaterThanOrEqual[O: scala.math.Ordering](val left: Column[O], val right: Column[O])
+  case class GreaterThanOrEqual[O: scala.math.Ordering](val left: ColumnBase[O], val right: Column[O])
     extends BinaryOperator[O, O, Boolean, Boolean]
   {
     override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] gteq (leftValue, rightValue)
@@ -368,7 +368,7 @@ object ColumnOps {
   }
   */
 
-  case class Is[O: scala.math.Ordering](left: Column[O], right: Column[O])
+  case class Is[O: scala.math.Ordering](left: ColumnBase[O], right: ColumnBase[O])
     extends BinaryOperator[O, O, Boolean, Boolean] with ColumnOps[Boolean,Boolean]
   {
     override def apply(leftValue: O, rightValue: O) = implicitly[Ordering[O]] equiv (leftValue, rightValue)
@@ -377,7 +377,7 @@ object ColumnOps {
   case class CountDistinct(query: ColumnBase[_]) extends SyntheticColumn[Int] {
   }
 
-  case class InSet[T](override val left: Column[T], set: Set[T])
+  case class InSet[T](override val left: ColumnBase[T], set: Set[T])
     extends UnaryOperator[T, Boolean, Boolean]
   {
     override def apply(leftValue: T): Boolean = set contains leftValue
@@ -463,7 +463,7 @@ object ColumnOps {
     override def apply(leftValue: String) = leftValue.matches(s)
   }
 
-  case class Satisfies[T](left: Column[T], f: T => Boolean)
+  case class Satisfies[T](left: ColumnBase[T], f: T => Boolean)
     extends OperatorColumn[Boolean] with UnaryOperator[T, Boolean, Boolean] with ColumnOps[Boolean,Boolean]
   {
     override def apply(leftValue: T) = f(leftValue)

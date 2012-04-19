@@ -2,8 +2,8 @@ package revolute.cascading
 
 import cascading.tuple.{Fields, TupleEntry}
 
-import revolute.query.{AbstractTable, ColumnBase, ColumnOps, EvaluationContext, NamedColumn, OperationType, Projection}
-import revolute.util.{Combinations, Identifier, NamingContext, Tuple}
+import revolute.query._
+import revolute.util._
 
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
@@ -16,12 +16,14 @@ object EvaluationChain {
   }
 
   def inputFields(c: ColumnBase[_]): Fields = {
-    val names = new EvaluationChain(c).roots map (_.qualifiedColumnName)
+    val names = new EvaluationChain(c).namedRoots map (_.qualifiedColumnName)
     //Console.println("fields: %s -> %s" format (c, names))
     new Fields(names: _*)
   }
 
-  def outputFields(c: ColumnBase[_]): Fields = {
+  def outputColumns(c: ColumnBase[_]): Seq[ColumnBase[_]] = new EvaluationChain(c).leaves
+
+  def outputNames(c: ColumnBase[_]): Seq[String] = {
     var unique = 0
 
     def name(c: ColumnBase[_]): Option[String] = c match {
@@ -30,15 +32,17 @@ object EvaluationChain {
       case _ => None
 
     }
-    val names = new EvaluationChain(c).leaves map { c => name(c).getOrElse {
+    new EvaluationChain(c).leaves map { c => name(c).getOrElse {
       unique += 1
       c.nameHint + "#" + unique
     }}
-    // Console.println("fields: %s -> %s" format (c, names))
-    new Fields(names: _*)
   }
 
-  def tables(c: ColumnBase[_]) = new EvaluationChain(c).roots map (_.table) toSet
+  def outputFields(c: ColumnBase[_]): Fields = new Fields(outputNames(c): _*)
+
+  def tables(c: ColumnBase[_]) = new EvaluationChain(c).namedRoots map (_.table) toSet
+
+  def queries(c: ColumnBase[_]): Set[Query[_ <: ColumnBase[_]]] = new EvaluationChain(c).queryRoots map (_.query) toSet
 
   private class TupleEntryWrapper extends Tuple {
     var tupleEntry: TupleEntry = null
@@ -55,7 +59,7 @@ class EvaluationChain(val c: ColumnBase[_]) {
 
   var tupleEntry: TupleEntry = null
 
-  val (roots, leaves, context) = {
+  val (namedRoots, queryRoots, leaves, context) = {
     def ensureAcyclic(c: ColumnBase[_], path: Seq[ColumnBase[_]] = Seq.empty) {
       for (d <- c.dependencies) {
         if (path contains d) sys.error("Circular dependency detected: " + path)
@@ -64,15 +68,26 @@ class EvaluationChain(val c: ColumnBase[_]) {
     }
     ensureAcyclic(c)
 
-    val roots = {
-      val roots = mutable.Set[NamedColumn[_]]()
+    val namedRoots = {
+      val named = mutable.Set[NamedColumn[_]]()
       def recurse(c: ColumnBase[_]): Unit = c match {
-        case named: NamedColumn[_] => roots += named
-        case c: ColumnBase[_]      => c.dependencies foreach recurse
+        case c: NamedColumn[_] => named += c
+        case c: ColumnBase[_]  => c.dependencies foreach recurse
       }
       recurse(c)
-      roots.toSeq.sortBy(_.qualifiedColumnName)
+      named.toSeq.sortBy(_.qualifiedColumnName)
     }
+
+    val queryRoots = {
+      val queries = mutable.Set[QueryColumn[_, _ <: ColumnBase[_]]]()
+      def recurse(c: ColumnBase[_]): Unit = c match {
+        case query: QueryColumn[_, _] => queries += query.asInstanceOf[QueryColumn[_, _ <: ColumnBase[_]]]
+        case c: ColumnBase[_]         => c.dependencies foreach recurse
+      }
+      recurse(c)
+      queries.toSeq
+    }
+
     //Console.println("roots: " + roots)
 
     val reverseDependencies = {
@@ -98,7 +113,7 @@ class EvaluationChain(val c: ColumnBase[_]) {
           tuple
         }
       }
-      override def position(c: ColumnBase[_]) = roots.indexOf(c)
+      override def position(c: ColumnBase[_]) = namedRoots.indexOf(c)
       override def toString = "RootContext.EvaluationContext"
     }
 
@@ -107,7 +122,7 @@ class EvaluationChain(val c: ColumnBase[_]) {
     val context = {
       val sharedStates = mutable.Map[ColumnBase[_], SharedEvaluationContext.SharedState]()
 
-      roots foreach { r => sharedStates(r) = rootState }
+      namedRoots foreach { r => sharedStates(r) = rootState }
 
       def recurse(c: ColumnBase[_]): EvaluationContext = {
         if (sharedStates.isDefinedAt(c)) {
@@ -142,11 +157,10 @@ class EvaluationChain(val c: ColumnBase[_]) {
 
     val leaves = c match {
       case p: Projection[_]    => p.columns
-      case t: AbstractTable[_] => t.*.columns
       case _                   => Seq(c)
     }
 
-    (roots, leaves, context)
+    (namedRoots, queryRoots, leaves, context)
   }
 
   def arity: Int = c.dependencies.size

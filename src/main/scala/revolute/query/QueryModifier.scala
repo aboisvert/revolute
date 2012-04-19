@@ -34,5 +34,6 @@ object ResultOrdering {
 }
 
 final case class Grouping(val by: By) extends QueryModifier {
-  override def toString = "Grouping"
+  override def toString = "Grouping(by=%s)" format (by)
 }
+

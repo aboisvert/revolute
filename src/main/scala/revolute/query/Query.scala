@@ -10,12 +10,27 @@ import cascading.tuple.Fields
 object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
 }
 
-/** Query monad: contains AST for query's projection, accumulated restrictions and other modifiers. */
+/** Query monad: contains AST for query's projection, accumulated restrictions and other modifiers.
+ *
+ *  A query represents a transformative sequence of,
+ *    1) one or more table joined or merged together,
+ *    2) field selection and function application (e.g. select clause, incl. 1-1, 1-0/1, 1-N mapping)
+ *    3) one or more filters (e.g. where clause)
+ *    4) grouping and sorting (e.g. group-by / sort-by)
+ *    5) aggregation based on groupings.
+ */
 class Query[E <: ColumnBase[_]](
   val value: E,
   val cond: List[ColumnBase[_]],
   val modifiers: List[QueryModifier]
 ) extends SyntheticColumn[E#_T] {
+
+  Console.println("new query: " + value)
+
+  {
+    val e = new Exception("new query: " + value)
+    e.printStackTrace
+  }
 
   override val nameHint = "Query(%s)" format value.nameHint
 
@@ -28,8 +43,14 @@ class Query[E <: ColumnBase[_]](
 
   def >>[F <: ColumnBase[F]](q: Query[F]): Query[F] = flatMap(_ => q)
 
-  def filter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] =
-    new Query(value, wt(f(value), cond), modifiers)
+  def filter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = {
+    Console.println("(%s).filter(%s)(%s)" format (this, f, wt))
+    val newModifiers = value match {
+      case j: Join[_, _] => modifiers :+ j
+      case other         => modifiers
+    }
+    new Query(value, wt(f(value), cond), newModifiers)
+  }
 
   def withFilter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
 
@@ -62,6 +83,8 @@ class Query[E <: ColumnBase[_]](
   def count(implicit ev: E <:< ColumnBase[_]) = ColumnOps.CountAll(value)
 
   override def toString = "Query(value=%s, cond=%s, modifiers=%s)" format (value, cond, modifiers)
+
+  def innerJoin[U <: Query[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Inner)
 }
 
 trait CanBeQueryCondition[-T] {
@@ -79,8 +102,10 @@ object CanBeQueryCondition {
   }
 
   implicit object BooleanCanBeQueryCondition extends CanBeQueryCondition[Boolean] {
-    override def apply(value: Boolean, l: List[ColumnBase[_]]): List[ColumnBase[_]] =
+    override def apply(value: Boolean, l: List[ColumnBase[_]]): List[ColumnBase[_]] = {
+      Console.println("BooleanCanBeQueryCondition.apply(%s, %s)" format (value, l))
       if (value) l else new ConstColumn(Some("BooleanCanBeQueryCondition"), false)(TypeMapper.BooleanTypeMapper) :: Nil
+    }
   }
 
   implicit def tuple2CanBeQueryCondition[T1, T2](p: Projection2[T1, T2]) = new Tuple2CanBeQueryCondition[T1, T2]

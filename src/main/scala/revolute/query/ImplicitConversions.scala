@@ -10,7 +10,7 @@ object ImplicitConversions {
 
   def outputFields(c: ColumnBase[_]): Fields = EvaluationChain.outputFields(c)
 
-  implicit def baseColumnToColumnOps[B1 : BaseTypeMapper](c: Column[B1]): ColumnOps[B1, B1] = c match {
+  implicit def baseColumnToColumnOps[B1 : BaseTypeMapper](c: ColumnBase[B1]): ColumnOps[B1, B1] = c match {
     case o: ColumnOps[_,_] => o.asInstanceOf[ColumnOps[B1, B1]]
     case _ => new ColumnOps[B1, B1] { protected[this] val leftOperand = c }
   }
@@ -32,4 +32,6 @@ object ImplicitConversions {
   implicit def columnToDestructable3[T1, T2, T3](c: ColumnBase[(T1, T2, T3)]) = new Destructable3(c)
 
   implicit def columnToProjection[T](c: ColumnBase[T]): Projection1[T] = new Projection1[T](c)
+
+  implicit def queryToProjection[P <: Projection[_]](q: Query[P]) = q.value
 }

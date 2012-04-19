@@ -3,7 +3,7 @@ package revolute.flow
 import cascading.flow.{Flow, FlowConnector, FlowProcess}
 import cascading.pipe.Pipe
 
-import revolute.query.{ColumnBase, Query, QueryBuilder, Table}
+import revolute.query.{ColumnBase, Query, QueryBuilder, Table, TableBase}
 import revolute.util.NamingContext
 import revolute.util.Compat._
 
@@ -23,8 +23,8 @@ object FlowContext {
 }
 
 class FlowContext(val namingContext: NamingContext, val flowConnector: FlowConnector) {
-  val sources = mutable.Map[Table[_], Tap]()
-  val sinks   = mutable.Map[Table[_], Tap]()
+  val sources = mutable.Map[TableBase[_], () => Tap]()
+  val sinks   = mutable.Map[TableBase[_], Tap]()
 }
 
 object FlowBuilder {
@@ -36,9 +36,20 @@ object FlowBuilder {
     flow.complete()
     flow
   }
+
+  def sources(pipeNames: Map[TableBase[_], Set[String]], context: FlowContext): java.util.Map[String, Tap] = JavaConversions.mapAsJavaMap {
+    pipeNames flatMap { case (table, names) =>
+      names map { name =>
+        val tapFactory = context.sources(table)
+        name -> tapFactory.apply()
+      }
+    } toMap;
+  }
+
 }
 
 class FlowBuilder(val context: FlowContext) {
+  import FlowBuilder._
 
   private val statements = ArrayBuffer[Statement]()
 
@@ -53,15 +64,14 @@ class FlowBuilder(val context: FlowContext) {
   }
 
   def createFlow(): Flow[_] = {
-    if (statements.size != 1) sys.error("FlowBuilder only supports 1 statement right now")
+    if (statements.size != 1) sys.error("FlowBuilder only supports 1 statement right now: " + statements.size)
 
     val pipe = statements.head.pipe
     val sink = statements.head.sink
-    val sources: java.util.Map[String, Tap] = JavaConversions.mapAsJavaMap {
-      context.sources map { case (table, tap) => (table.tableName, tap: Tap) } toMap
-    }
-    val flow = context.flowConnector.connect(sources, sink, pipe)
-    flow
+    val pipeNames = statements map (_.pipe.getName)
+    sys.error("TODO")
+    // val flow = context.flowConnector.connect(sources(pipeNames, context), sink, pipe)
+    // flow
   }
 }
 
@@ -73,8 +83,7 @@ sealed trait Statement {
 class Insert[Q <: Query[ColumnBase[_]], T <: Table[_]](val query: Q, val table: T, context: FlowContext) extends Statement {
   def pipe = {
     val qb = new QueryBuilder(query, NamingContext())
-    val pipe = qb.build()
-    pipe
+    qb.pipe
   }
 
   def sink = {
