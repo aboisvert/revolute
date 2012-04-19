@@ -33,8 +33,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
   }
 
   implicit val context = FlowContext.local { context =>
-    context.sources += (AtoZ -> (() => new FileTap(new TextDelimited(inputFields(AtoZ.*), " "), "target/test/resources/a-z.txt")))
-    context.sources += (Words -> (() => new FileTap(new TextDelimited(inputFields(Words.*), " "), "target/test/resources/words.txt")))
+    context.sources(AtoZ)  = () => new FileTap(new TextDelimited(inputFields(AtoZ.*), " "),  "target/test/resources/a-z.txt")
+    context.sources(Words) = () => new FileTap(new TextDelimited(inputFields(Words.*), " "), "target/test/resources/words.txt")
   }
 
   val sandbox = new Sandbox("target/test/output")
