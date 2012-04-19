@@ -301,6 +301,8 @@ extends Tuple10(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10) with Projection[(T1,T2,T3,T4,T5,
 
 */
 
-class NamedProjection[P <: Projection[_]](val query: Query[P]) extends Query[P](query.value, query.cond, query.modifiers) {
+class NamedProjection[P <: Projection[_ <: Product]](val query: Query[P]) extends Projection[P#V] {
+  override def columns = query.value.columns
+  override def projectionArity = query.value.projectionArity
   def * : P = query.value
 }

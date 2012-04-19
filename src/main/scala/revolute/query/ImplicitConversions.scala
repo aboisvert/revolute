@@ -24,6 +24,7 @@ object ImplicitConversions {
 
   implicit def valueToConstColumn[T : TypeMapper](v: T) = ConstColumn[T]("valueToConstColumn", v)
 
+  // required for monadic for-comprehensions with tables + columns
   implicit def columnToQuery[T <: ColumnBase[_]](t: T): Query[T] = new Query(t, Nil, Nil)
 
   implicit def columnToResultOrdering(c: Column[_]): ResultOrdering = ResultOrdering.Asc(By(c))
@@ -34,4 +35,16 @@ object ImplicitConversions {
   implicit def columnToProjection[T](c: ColumnBase[T]): Projection1[T] = new Projection1[T](c)
 
   implicit def queryToProjection[P <: Projection[_]](q: Query[P]) = q.value
+
+  implicit def tableIsJoinable[T <: TableBase[_]] = new Joinable[T] {
+    def asQuery(t: T) = columnToQuery(t)
+  }
+
+  implicit def queryIsJoinable[T <: Query[_]] = new Joinable[T] {
+    def asQuery(t: T) = t
+  }
+
+  implicit def namedProjectionIsJoinable[T <: NamedProjection[_]] = new Joinable[T] {
+    def asQuery(t: T) = new Query(t, Nil, Nil)
+  }
 }

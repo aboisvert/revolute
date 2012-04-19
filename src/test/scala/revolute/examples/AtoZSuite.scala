@@ -130,7 +130,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
     "join tables using innerJoin" in {
       val result = sandbox run {
         for {
-          Join(az, words) <- (AtoZ.innerJoin(columnToQuery(Words))) on (_.letter is _.letter)
+          Join(az, words) <- (AtoZ.innerJoin(Words)) on (_.letter is _.letter)
         } yield az.letter ~ az.number ~ words.word
         /*
         AtoZ innerJoin Words on (_.letter is _.letter) map { case Join(az, words) =>
@@ -155,7 +155,7 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         }
 
         for {
-          Join(lastLetter, words) <- (lastLetter.innerJoin(columnToQuery(Words)) on (_.last is _.letter))
+          Join(lastLetter, words) <- (lastLetter innerJoin Words) on (_.last is _.letter)
         } yield lastLetter.last ~ words.word
       }
       result.size should be === 8
@@ -175,8 +175,8 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
         }
 
         for {
-          Join(lastLetter, words) <- lastLetter innerJoin columnToQuery(Words) on (_.last is _.letter)
-          Join(lastLetter, az)    <- lastLetter innerJoin columnToQuery(AtoZ)  on (_.last is _.letter)
+          Join(lastLetter, words) <- (lastLetter innerJoin Words) on (_.last is _.letter)
+          Join(lastLetter, az)    <- (lastLetter innerJoin AtoZ)  on (_.last is _.letter)
         } yield lastLetter.last ~ az.number ~ words.word
       }
       result.size should be === 8
@@ -271,5 +271,6 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (new Tuple("a", "1", "26"))
       result should contain (new Tuple("z", "26", "1"))
     }
+
   }
 }

@@ -7,6 +7,10 @@ import revolute.query.StandardTypeMappers._
 import scala.reflect.Manifest
 import cascading.tuple.Fields
 
+trait Joinable[T <: ColumnBase[_]] {
+  def asQuery(t: T): Query[T]
+}
+
 object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
 }
 
@@ -84,7 +88,8 @@ class Query[E <: ColumnBase[_]](
 
   override def toString = "Query(value=%s, cond=%s, modifiers=%s)" format (value, cond, modifiers)
 
-  def innerJoin[U <: Query[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Inner)
+  def innerJoin[C <: ColumnBase[_]](other: C)(implicit joinable: Joinable[C]) =
+    new JoinBase[this.type, Query[C]](this, joinable.asQuery(other), Join.Inner)
 }
 
 trait CanBeQueryCondition[-T] {
