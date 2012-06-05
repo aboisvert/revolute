@@ -5,6 +5,7 @@ import cascading.tap.SinkMode
 import cascading.tap.local.FileTap
 import cascading.tuple.Tuple
 import cascading.scheme.local.TextDelimited
+
 import revolute.flow._
 import revolute.query._
 import revolute.query.ImplicitConversions._
@@ -12,21 +13,23 @@ import revolute.util._
 import revolute.util.Compat._
 import revolute.util.Converters._
 import revolute.test.Sandbox
+
 import org.scalatest.WordSpec
 import org.scalatest.matchers.ShouldMatchers
+
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 
 @org.junit.runner.RunWith(classOf[org.scalatest.junit.JUnitRunner])
 class AtoZSuite extends WordSpec with ShouldMatchers {
 
-  object AtoZ extends Table[(String, Int)]("A to Z") {
+  object AtoZ extends Table {
     def letter = column[String]("letter")
     def number = column[String]("number").asColumnOf[Int]
     def * = letter ~ number
   }
 
-  object Words extends Table[(String, String)]("Words") {
+  object Words extends Table {
     def letter = column[String]("letter")
     def word = column[String]("word")
     def * = letter ~ word
@@ -232,13 +235,13 @@ class AtoZSuite extends WordSpec with ShouldMatchers {
       result should contain (new Tuple("y", "yes"))
     }
 
-    "support mapping + filtering using mapSeq" in {
+    "support one-to-many mapping + filtering using mapValues" in {
       def explode(n: Int) = Seq.tabulate(n) { x => "%d-%d" format (n, x+1) }
 
       val result = sandbox run {
         val query = for {
           abc <- AtoZ
-          exploded <- abc.number mapSeq { n => if (n > 2 && n < 5) explode(n) else Seq.empty }
+          exploded <- abc.number mapValues { n => if (n > 2 && n < 5) explode(n) else Seq.empty }
         } yield abc.letter ~ exploded
         query
       }

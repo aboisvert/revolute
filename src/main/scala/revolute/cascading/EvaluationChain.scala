@@ -26,21 +26,25 @@ object EvaluationChain {
   def outputNames(c: ColumnBase[_]): Seq[String] = {
     var unique = 0
 
-    def name(c: ColumnBase[_]): Option[String] = c match {
-      case named: NamedColumn[_] => Some(named.qualifiedColumnName)
-      case as: ColumnOps.AsColumnOf[_, _] => name(as.left)
-      case _ => None
-
+    def resolveNames(c: ColumnBase[_]): Seq[String] = c match {
+      case p:     Projectable[_]             => p.projection.columns flatMap resolveNames
+      case as:    ColumnOps.AsColumn[_]      => resolveNames(as.right)
+      case named: NamedColumn[_]             => Seq(named.qualifiedColumnName)
+      case as:    ColumnOps.AsColumnOf[_, _] => resolveNames(as.left)
+      case _                                 => Seq.empty
     }
-    new EvaluationChain(c).leaves map { c => name(c).getOrElse {
-      unique += 1
-      c.nameHint + "#" + unique
-    }}
+    new EvaluationChain(c).leaves flatMap { c => 
+      val names = resolveNames(c)
+      if (names.nonEmpty) names else {
+        unique += 1
+        Seq(c.nameHint + "#" + unique)
+      } 
+    }
   }
 
   def outputFields(c: ColumnBase[_]): Fields = new Fields(outputNames(c): _*)
 
-  def tables(c: ColumnBase[_]) = new EvaluationChain(c).namedRoots map (_.table) toSet
+  def tables(c: ColumnBase[_]): Set[AbstractTable[_ <: Product]] = new EvaluationChain(c).namedRoots map (_.table) toSet
 
   def queries(c: ColumnBase[_]): Set[Query[_ <: ColumnBase[_]]] = new EvaluationChain(c).queryRoots map (_.query) toSet
 
@@ -109,7 +113,7 @@ class EvaluationChain(val c: ColumnBase[_]) {
         else {
           tuple.tupleEntry = tupleEntry
           tupleEntry = null
-          Console.println("root context next tuple: " + tuple)
+          // Console.println("root context next tuple: " + tuple)
           tuple
         }
       }
@@ -192,7 +196,7 @@ class SharedEvaluationContext(val shared: SharedEvaluationContext.SharedState) e
   shared.listeners += this
 
   override def nextTuple(): Tuple = {
-    Console.println("SharedEvaluationContext.nextTuple() consumed=" + consumed)
+    // Console.println("SharedEvaluationContext.nextTuple() consumed=" + consumed)
     if (consumed || shared.tuple == null) {
       shared.nextTuple()
     }
@@ -215,6 +219,8 @@ class OneToZeroOrOneEvaluationContext(
 
   private[this] val positions = orderedDependencies.zipWithIndex.toMap
 
+  //Console.println("subContexts " + (subContexts.toList))
+  //Console.println("orderedDependencies " + (orderedDependencies.toList))
   private[this] val subPositions = subContexts zip orderedDependencies map { case (c, d) => c.position(d) }
 
   private[this] val tuple = new Tuple {
@@ -241,12 +247,13 @@ class OneToZeroOrOneEvaluationContext(
     while (i < subContexts.length) {
       val context = subContexts(i)
       val next = context.nextTuple()
-      Console.println("next: " + context + " next: " + next)
+      // Console.println("next context: " + context)
+      // Console.println("next tuple:   " + next)
       if (next == null) return null
       tuple.values(i) = next
       i += 1
     }
-    Console.println("EvaluationChainContext nextTuple(): " + tuple)
+    // Console.println("EvaluationChainContext nextTuple(): " + tuple)
     tuple
   }
 
@@ -286,7 +293,8 @@ class OneToZeroOrManyEvaluationContext(
         subValues(i).clear()
         val context = subContexts(i)
         val next = context.nextTuple()
-        Console.println("next: " + context + " next: " + next)
+        // Console.println("next context: " + context)
+        // Console.println("next tuple:   " + next)
         if (next == null) return null
 
         types(i) match {
@@ -314,7 +322,7 @@ class OneToZeroOrManyEvaluationContext(
       }
       iterator = Combinations.combinations(subValues)
       current = iterator.next()
-      Console.println("EvaluationChainContext nextTuple(): " + tuple)
+      // Console.println("EvaluationChainContext nextTuple(): " + tuple)
       tuple
     } else if (iterator.hasNext) {
       current = iterator.next()

@@ -4,7 +4,7 @@ import cascading.flow.FlowProcess
 import cascading.operation.{BaseOperation, Function, FunctionCall, OperationCall}
 import cascading.tuple.{Fields, Tuple}
 
-import revolute.query.{ColumnBase, Column, OutputType, Projection}
+import revolute.query._
 import revolute.query.OperationType._
 import revolute.util.{Combinations, NamingContext}
 
@@ -21,14 +21,23 @@ class FlatMapOperation(val projection: Projection[_])
   override def operate(flowProcess: FlowProcess[_], functionCall: FunctionCall[Any]) {
     chain.tupleEntry = functionCall.getArguments
     var tuple = chain.context.nextTuple()
-    Console.println("tuple: " + tuple)
+    // Console.println("tuple: " + tuple)
     while (tuple != null) {
       try {
         val result = new cascading.tuple.Tuple()
         var i = 0
         while (i < chain.arity) {
           val value = tuple.get(i)
-          result.add(value)
+          projection.columns(i) match {
+            case p: Projectable[_] =>
+              val map = value.asInstanceOf[Map[ColumnBase[_], Any]] 
+              p.projection.columns foreach { c =>
+                val v = map(c)
+                result.add(v)
+              }
+            case _ =>
+              result.add(value)
+          }
           i += 1
         }
         Console.println("add: " + result)

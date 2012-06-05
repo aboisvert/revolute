@@ -6,6 +6,10 @@ import scala.collection._
 
 abstract class ColumnOption[+T]
 
+trait Projectable[T] {
+  def projection: Projection[T]
+}
+
 object ColumnOptions {
   case object NotNull extends ColumnOption[Nothing]
   case object Nullable extends ColumnOption[Nothing]
@@ -92,13 +96,23 @@ trait ColumnOps[B1, P1] {
 
   def asColumnOf[T2](implicit conv: Converter[P1, T2], tm: TypeMapper[T2]): OperatorColumn[T2]  = new AsColumnOf[P1, T2](leftOperand)
 
+  def as(named: NamedColumn[P1])(implicit tm: TypeMapper[P1]) = new AsColumn[P1](leftOperand, named)
+  
+  // one-to-one mapping
   def mapValue[T2](f: P1 => T2)(implicit tm: TypeMapper[T2]) = new MapValue[P1, T2](leftOperand, f)
 
+  // one-to-many mapping (possibly zero)
+  def mapValues[T2](f: P1 => Seq[T2])(implicit tm: TypeMapper[T2]) = new MapValues[P1, T2](leftOperand, f)
+
+  def mapValuesMap(f: P1 => Seq[Map[NamedColumn[_], Any]]) = new {
+    def as[T2 <: AbstractTable[_ <: Product]](t2: T2)(implicit tm: TypeMapper[T2]) = new MapValuesMap[P1, T2](leftOperand, f, t2)
+  }
+    
+  // one-to-zero-or-one mapping with Option type
   def mapOption[T2](f: P1 => Option[T2])(implicit tm: TypeMapper[T2]) = new MapOption[P1, T2](leftOperand, f)
 
+  // one-to-zero-or-one mapping w/ partial function
   def mapPartial[T2](f: PartialFunction[P1,T2])(implicit tm: TypeMapper[T2]) = new MapPartial[P1, T2](leftOperand, f)
-
-  def mapSeq[T2](f: P1 => Seq[T2])(implicit tm: TypeMapper[T2]) = new MapSeq[P1, T2](leftOperand, f)
 
   // Boolean only
   def &&(b: ColumnBase[P1])(implicit ev: P1 =:= Boolean): OperatorColumn[Boolean] =
@@ -230,15 +244,16 @@ object ColumnOps {
 
       private[this] val tuple = new Tuple {
         override def get(pos: Int) = value
+        override def toString = "UnaryTuple(%s)" format (value)
       }
 
       override def nextTuple(): Tuple = {
-        Console.println("unary next tuple %s" format nameHint)
+        // Console.println("unary next tuple %s" format nameHint)
         val nextTuple = parent.nextTuple()
-        Console.println("unary next tuple %s: %s" format (nameHint, nextTuple))
+        // Console.println("unary next tuple %s: %s" format (nameHint, nextTuple))
         if (nextTuple == null) return null
         value = apply(nextTuple.get(pos).asInstanceOf[L])
-        Console.println("unary next tuple2 %s: %s" format (nameHint, tuple))
+        // Console.println("unary next tuple2 %s: %s" format (nameHint, tuple))
         tuple
       }
 
@@ -270,14 +285,14 @@ object ColumnOps {
       }
 
       override def nextTuple(): Tuple = {
-        Console.println("binary next tuple %s" format nameHint)
+        // Console.println("binary next tuple %s" format nameHint)
         val nextTuple = parent.nextTuple()
         if (nextTuple == null) return null
         val left = nextTuple.get(leftPos).asInstanceOf[L]
         val right = nextTuple.get(rightPos).asInstanceOf[R]
-        Console.println("binary eval %s: left=%s right=%s" format (nameHint, left, right))
+        // Console.println("binary eval %s: left=%s right=%s" format (nameHint, left, right))
         value = apply(left, right)
-        Console.println("binary next tuple %s: %s" format (nameHint, tuple))
+        // Console.println("binary next tuple %s: %s" format (nameHint, tuple))
         tuple
       }
 
@@ -297,6 +312,14 @@ object ColumnOps {
     override def toString = "AsColumnOf(%s, type=%s)" format (left, tm.getClass.getSimpleName)
   }
 
+  case class AsColumn[T1](val left: ColumnBase[T1], val right: ColumnBase[T1])(implicit tm: TypeMapper[T1])
+    extends OperatorColumn[T1] with UnaryOperator[T1, T1, T1]
+  {
+    override val nameHint = right.nameHint
+    override def apply(leftValue: T1): T1 = leftValue
+    override def toString = "AsColumn(%s)" format (right)
+  }
+  
   case class MapValue[T1, T2](val left: ColumnBase[T1], f: T1 => T2)(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, T2, T2]
   {
@@ -317,13 +340,66 @@ object ColumnOps {
     override def operationType = OperationType.OptionMapper
   }
 
-  case class MapSeq[T1, T2](val left: ColumnBase[T1], f: T1 => Seq[T2])(implicit tm: TypeMapper[T2])
+  case class MapValues[T1, T2](val left: ColumnBase[T1], f: T1 => Seq[T2])(implicit tm: TypeMapper[T2])
     extends OperatorColumn[T2] with UnaryOperator[T1, Seq[T2], T2]
   {
     override def apply(leftValue: T1) = f(leftValue)
     override def operationType = OperationType.SeqMapper
   }
 
+  case class MapValuesMap[T1, T2 <: AbstractTable[_]](val left: ColumnBase[T1], f: T1 => Seq[Map[NamedColumn[_], Any]], val table: T2)(implicit tm: TypeMapper[T2])
+    extends OperatorColumn[T2] with UnaryOperator[T1, Seq[Map[NamedColumn[_], Any]], T2] with Projectable[T2#V]
+  {
+    type _T2 = T2
+    override def apply(leftValue: T1) = f(leftValue)
+    override def operationType = OperationType.SeqMapper
+    override def projection = table.*
+    
+    /*
+    override def chainEvaluation(parent: EvaluationContext): EvaluationContext = new EvaluationContext {
+      lazy val pos = parent.position(left)
+
+      type M = Map[NamedColumn[_], Any]
+      
+      if (table.columns exists (!_.isInstanceOf[NamedColumn[_]])) {
+        sys.error("Expecting all NamedColumns: " + columns)
+      }
+      
+      private[this] val columns = table.columns collect { case c: NamedColumn[_] => c } toIndexedSeq
+      
+      private[this] var values: IndexedSeq[M] = _
+      
+      private[this] var tupleIndex = 0
+
+      private[this] val tuple = new Tuple {
+        override def get(pos: Int) = {
+          val c = columns(pos)
+          values(tupleIndex)(c)
+        }
+        override def toString = "MapValuesMapTuple(%s)" format values(tupleIndex).mkString(",")
+      }
+
+      override def nextTuple(): Tuple = {
+        if (values == null || tupleIndex >= values.size) {
+          Console.println("MapValuesMap next tuple %s" format nameHint)
+          val nextTuple = parent.nextTuple()
+          Console.println("MapValuesMap next tuple %s: %s" format (nameHint, nextTuple))
+          if (nextTuple == null) return null
+          values = apply(nextTuple.get(pos).asInstanceOf[T1]).toIndexedSeq
+          Console.println("MapValuesMap next tuple2 %s: %s" format (nameHint, tuple))
+        } else {
+          tupleIndex += 1
+        }
+        tuple
+      }
+
+      override def position(c: ColumnBase[_]) = columns.indexOf(c)
+
+      override def toString = "%s.EvaluationContext(parent=%s)" format (MapValuesMap.this.toString, parent)
+    }
+    */
+  }
+  
   case class LessThan[O: scala.math.Ordering](val left: ColumnBase[O], val right: Column[O])
     extends BinaryOperator[O, O, Boolean, Boolean]
   {

@@ -36,7 +36,7 @@ object OutputType {
   val values = List(OneToZeroOrOne, OneToMany)
 }
 
-trait SyntheticColumn[T] extends ColumnBase[T] {
+trait SyntheticColumn[+T] extends ColumnBase[T] {
   override val nameHint = getClass.getSimpleName
   override val operationType = OperationType.PureMapper
   override def dependencies = sys.error("Should not be called; use case-by-case for synthetic column dependencies: " + this)
@@ -110,7 +110,7 @@ abstract class OperatorColumn[T : TypeMapper] extends Column[T] with ColumnOps[T
 }
 
 /** A column which is part of a Table. */
-class NamedColumn[T: TypeMapper](val table: AbstractTable[_], val columnName: String, val options: ColumnOption[_]*)
+class NamedColumn[T: TypeMapper](val table: AbstractTable[_ <: Product], val columnName: String, val options: ColumnOption[_]*)
   extends OperatorColumn[T] with ColumnOps[T, T]
 {
   val qualifiedColumnName = table.tableName + "." + columnName

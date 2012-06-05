@@ -42,4 +42,8 @@ object StandardTypeMappers {
   object UnitTypeMapperDelegate extends TypeMapperDelegate[Unit] {
     def zero = ()
   }
+  
+  class ProjectionTypeMapperDelegate[P <: Projection[_ <: Product]] extends TypeMapperDelegate[P] {
+    def zero = sys.error("todo")
+  }
 }

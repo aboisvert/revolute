@@ -83,6 +83,11 @@ object TypeMapper {
       }
     }
   }
+  
+  implicit def projectionTypeMapper[P <: Projection[_ <: Product]] = new BaseTypeMapper[P] {
+    def apply = new StandardTypeMappers.ProjectionTypeMapperDelegate[P]
+  }
+  
 }
 
 trait BaseTypeMapper[T] extends TypeMapper[T] {

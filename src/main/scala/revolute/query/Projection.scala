@@ -7,7 +7,7 @@ import revolute.util.Compat._
 import scala.collection._
 import scala.sys.error
 
-abstract class Projection[T <: Product] extends ColumnBase[T] {
+abstract class Projection[+T] extends ColumnBase[T] {
   type V = T
 
   import OperationType._
@@ -18,12 +18,14 @@ abstract class Projection[T <: Product] extends ColumnBase[T] {
   def projectionArity: Int
 
   def columns: Seq[ColumnBase[_]]
+  
+  def ~[U](c: ColumnBase[U]): Projection[Product] = new ProjectionList(columns :+ c)
 
-  override val nameHint = "Projection" + projectionArity
+  override def nameHint = "Projection" + projectionArity
 
   override def dependencies: Set[ColumnBase[_]] = columns.toSet
 
-  override val operationType = OperationType.PureMapper
+  override def operationType: OperationType = OperationType.PureMapper
 
   override def chainEvaluation(context: EvaluationContext): EvaluationContext = {
     new EvaluationContext {
@@ -43,6 +45,11 @@ abstract class Projection[T <: Product] extends ColumnBase[T] {
   def outerJoin[U <: Projection[_]](other: U) = new JoinBase[this.type, U](this, other, Join.Outer)
   */
 }
+
+abstract class ProductProjection[+T <: Product] extends Projection[T]
+
+abstract class SeqProjection extends Projection[Seq[ColumnBase[_]]]
+  
 
 object Projection {
   def unapply[T1,T2](p: Projection2[T1, T2]) = {
@@ -89,7 +96,7 @@ final class Projection1[T1](
   val _1: ColumnBase[T1]
 ) extends Projection[Tuple1[T1]] {
   override val projectionArity = 1
-  def ~[U](c: ColumnBase[U]) = new Projection2(_1, c)
+  override def ~[U](c: ColumnBase[U]) = new Projection2(_1, c)
   def columns = Seq(_1)
 }
 
@@ -98,7 +105,7 @@ final class Projection2[T1,T2](
   val _2: ColumnBase[T2]
 ) extends Projection[(T1,T2)] {
   override val projectionArity = 2
-  def ~[U](c: ColumnBase[U]) = new Projection3(_1, _2, c)
+  override def ~[U](c: ColumnBase[U]) = new Projection3(_1, _2, c)
   def columns: Seq[ColumnBase[_]] = Seq(_1, _2)
   def unapply = (_1, _2)
 
@@ -305,4 +312,8 @@ class NamedProjection[P <: Projection[_ <: Product]](val query: Query[P]) extend
   override def columns = query.value.columns
   override def projectionArity = query.value.projectionArity
   def * : P = query.value
+}
+
+class ProjectionList[P <: Projection[_ <: Product]](override val columns: Seq[ColumnBase[_]]) extends Projection[P#V] {
+  def projectionArity = columns.size
 }

@@ -11,7 +11,14 @@ trait Joinable[T <: ColumnBase[_]] {
   def asQuery(t: T): Query[T]
 }
 
-object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
+object QueryTypes {
+  type Q = Query[_ <: ColumnBase[_]]
+  type J = Join[_ <: Q, _ <: Q]
+}
+
+import QueryTypes._
+
+object Query extends Query(ConstColumn("UnitColumn", ()), None, Nil, Nil) {
 }
 
 /** Query monad: contains AST for query's projection, accumulated restrictions and other modifiers.
@@ -25,36 +32,49 @@ object Query extends Query(ConstColumn("UnitColumn", ()), Nil, Nil) {
  */
 class Query[E <: ColumnBase[_]](
   val value: E,
+  val subquery: Option[Q],
   val cond: List[ColumnBase[_]],
   val modifiers: List[QueryModifier]
-) extends SyntheticColumn[E#_T] {
+) extends SyntheticColumn[E] {
   type QT = E
   
-  Console.println("new query: " + value)
+  //Console.println("new query: " + value)
 
   {
-    val e = new Exception("new query: " + value)
-    e.printStackTrace
+    // val e = new Exception("new query: " + value)
+    //e.printStackTrace
   }
 
   override val nameHint = "Query(%s)" format value.nameHint
 
   def flatMap[F <: ColumnBase[_]](f: E => Query[F]): Query[F] = {
     val q = f(value)
-    new Query(q.value, cond ::: q.cond, modifiers ::: q.modifiers)
+    // Console.println("Flatmap %s with %s" format (this, q))
+    if (q != value) {
+      new Query(q.value, Some(q), cond ::: q.cond, modifiers ::: q.modifiers)
+    } else {
+      this.asInstanceOf[Query[F]]
+    }
   }
 
-  def map[F <: ColumnBase[_]](f: E => F): Query[F] = flatMap(v => new Query(f(v), Nil, Nil))
+  def map[F <: ColumnBase[_]](f: E => F): Query[F] = {
+    val newValue = f(value)
+    if (newValue != value) {
+      new Query(newValue, Some(this), cond, modifiers)
+    } else {
+      this.asInstanceOf[Query[F]]
+    }
+  }
 
   def >>[F <: ColumnBase[F]](q: Query[F]): Query[F] = flatMap(_ => q)
 
   def filter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = {
-    Console.println("(%s).filter(%s)(%s)" format (this, f, wt))
+    //Console.println("(%s).filter(%s)(%s)" format (this, f, wt))
     val newModifiers = value match {
       case j: Join[_, _] => modifiers :+ j
       case other         => modifiers
     }
-    new Query(value, wt(f(value), cond), newModifiers)
+    new Query(value, subquery, wt(f(value), cond), newModifiers)
   }
 
   def withFilter[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
@@ -62,9 +82,9 @@ class Query[E <: ColumnBase[_]](
   def where[T](f: E => T)(implicit wt: CanBeQueryCondition[T]): Query[E] = filter(f)(wt)
 
   def groupBy(by: Column[_]*) =
-    new Query[E](value, cond, modifiers ::: by.view.map(c => new Grouping(By(c))).toList)
+    new Query[E](value, subquery, cond, modifiers ::: by.view.map(c => new Grouping(By(c))).toList)
 
-  def orderBy(by: ResultOrdering*) = new Query[E](value, cond, modifiers ::: by.toList)
+  def orderBy(by: ResultOrdering*) = new Query[E](value, subquery, cond, modifiers ::: by.toList)
 
   //def exists = ColumnOps.Exists(map(_ => ConstColumn("exists", 1)))
 
@@ -77,7 +97,7 @@ class Query[E <: ColumnBase[_]](
       case x :: _ => f(Some(x.asInstanceOf[T]))
       case _ => f(None)
     }
-    new Query[E](value, cond, mod :: other)
+    new Query[E](value, dependencies, cond, mod :: other)
   }
 
   // Query[ColumnBase[_]] only
@@ -87,10 +107,22 @@ class Query[E <: ColumnBase[_]](
 
   def count(implicit ev: E <:< ColumnBase[_]) = ColumnOps.CountAll(value)
 
-  override def toString = "Query(value=%s, cond=%s, modifiers=%s)" format (value, cond, modifiers)
+  override def toString = {
+    if (subquery.isEmpty) {
+      "Query(\n  value=%s,\n  cond=%s,\n  modifiers=%s)" format (value, cond, modifiers)
+    } else {
+      "Query(\n  value=%s,\n  cond=%s,\n  modifiers=%s,\n  subquery=\n%s\n)" format (value, cond, modifiers, ASTPrinter.nested(subquery.toString))
+    }
+  }
 
-  def innerJoin[C <: ColumnBase[_]](other: C)(implicit joinable: Joinable[C]) =
-    new JoinBase[this.type, Query[C]](this, joinable.asQuery(other), Join.Inner)
+  def innerJoin[C <: ColumnBase[_]](other: C)(implicit joinable: Joinable[C]) : JoinBase[QT, C] =
+    new JoinBase[QT, C](this, joinable.asQuery(other), Join.Inner)
+    
+  private[query] def joinQueries = {
+    val joins  : Seq[J] = modifiers collect { case j: J => j }
+    val queries: Seq[Q] = joins map { j => Seq(j.left, j.right) } flatten;
+    queries.distinct
+  }    
 }
 
 trait CanBeQueryCondition[-T] {
@@ -109,7 +141,7 @@ object CanBeQueryCondition {
 
   implicit object BooleanCanBeQueryCondition extends CanBeQueryCondition[Boolean] {
     override def apply(value: Boolean, l: List[ColumnBase[_]]): List[ColumnBase[_]] = {
-      Console.println("BooleanCanBeQueryCondition.apply(%s, %s)" format (value, l))
+      //Console.println("BooleanCanBeQueryCondition.apply(%s, %s)" format (value, l))
       if (value) l else new ConstColumn(Some("BooleanCanBeQueryCondition"), false)(TypeMapper.BooleanTypeMapper) :: Nil
     }
   }
@@ -123,4 +155,21 @@ object CanBeQueryCondition {
 
 case class Union(all: Boolean, queries: List[Query[_]]) {
   override def toString = if (all) "Union all" else "Union"
+}
+
+object ASTPrinter {
+  final val threadLocal = new ThreadLocal[Int]()
+
+  
+  def nested(s: => String) = {
+    val depth = Option(threadLocal.get) getOrElse 1
+    val prefix = ("|    " * depth)
+    threadLocal.set(depth+1)
+    try {
+      val orig = s
+      prefix + orig.replaceAll("\n", "\n" + prefix)
+    } finally {
+      threadLocal.set(depth)
+    }
+  }
 }

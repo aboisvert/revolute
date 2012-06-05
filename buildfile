@@ -7,13 +7,13 @@ repositories.remote << 'http://repo1.maven.org/'
 
 HADOOP_HOME = "/opt/boisvert/hadoop-0.20.2"
 
-CASCADING_DISTRO = "org.cascading:cascading:tgz:wip-2.0"
-download(artifact(CASCADING_DISTRO) => 'http://files.concurrentinc.com/cascading/2.0/cascading-2.0.0-wip-200-hadoop-0.20.2%2B.tgz')
+CASCADING_DISTRO = "org.cascading:cascading:tgz:wip-2.0-298"
+download(artifact(CASCADING_DISTRO) => 'http://files.concurrentinc.com/cascading/2.0/cascading-2.0.0-wip-298.tgz')
 
-CASCADING_TMP = File.join(ENV['TMP'] || '/tmp', 'cascading-wip-2.0')
+CASCADING_TMP = File.join(ENV['TMP'] || '/tmp', 'cascading-wip-2.0-208')
 unzip(CASCADING_TMP => artifact(CASCADING_DISTRO))
 file(CASCADING_TMP).invoke
-FileList[CASCADING_TMP + '/cascading-2.0.0-wip-200-hadoop-0.20.2+/*'].each do |f|
+FileList[CASCADING_TMP + '/cascading-2.0.0-wip-298/*'].each do |f|
   FileUtils.mv(f, CASCADING_TMP)
 end
 
@@ -25,7 +25,8 @@ CASCADING_CORE = \
 
 HADOOP = \
   FileList[HADOOP_HOME + "/hadoop-*-core.jar"] + \
-  FileList[HADOOP_HOME + "/lib/*.jar"]
+  FileList[HADOOP_HOME + "/lib/*.jar"] \
+  .reject { |f| f =~ /slf4j/ }
 
 desc 'Scala-based query language for Hadoop'
 define "revolute" do

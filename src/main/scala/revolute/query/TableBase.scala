@@ -7,7 +7,9 @@ import revolute.util.Identifier
 sealed trait TableBase[T <: Product] extends Projection[T] with java.io.Serializable {
 }
 
-abstract class AbstractTable[T <: Product](val tableName: String) extends TableBase[T] {
+abstract class AbstractTable[T <: Product] extends TableBase[T] {
+  def tableName: String = getClass.getSimpleName.replaceAll("""\$""", "")
+  
   def * : Projection[T]
 
   override val nameHint = tableName
@@ -28,10 +30,22 @@ abstract class AbstractTable[T <: Product](val tableName: String) extends TableB
   override def toString = "Table " + tableName
 }
 
-final class JoinBase[+T1 <: Query[_], +T2 <: Query[_]](_left: T1, _right: T2, joinType: Join.JoinType) {
+// Note:
+//   JoinBase[+T1 <: Query[_], +T2 <: Query[_]](_left: T1, _right: T2, joinType: Join.JoinType) {
+// does not work because we need path-dependent type on tables after joins.
+//   
+final class JoinBase[T1 <: ColumnBase[_], T2 <: ColumnBase[_]](_left: Query[T1], _right: Query[T2], joinType: Join.JoinType) {
   override def toString = "JoinBase(" + _left + "," + _right + ")"
-  def on[T <: ColumnBase[_]](pred: (T1, T2) => T) = new Join(_left, _right, joinType, pred(_left, _right))
+  def on[T <: ColumnBase[_]](pred: (T1, T2) => T) = new Join(_left, _right, joinType, pred(_left.value, _right.value))
 }
+/*
+final class JoinBase[+T1 <: Query[_], +T2 <: Query[_]](_left: T1, _right: T2, joinType: Join.JoinType) {
+  type V1 = T1#QT
+  type V2 = T2#QT
+  override def toString = "JoinBase(" + _left + "," + _right + ")"
+  def on[T <: ColumnBase[_]](pred: (V1, V2) => T) = new Join(_left, _right, joinType, pred(_left, _right))
+}
+*/
 
 
 final class Join[+T1 <: Query[_], +T2 <: Query[_]](
@@ -55,7 +69,8 @@ final class Join[+T1 <: Query[_], +T2 <: Query[_]](
 }
 
 object Join {
-  def unapply[T1 <: Query[_], T2 <: Query[_]](j: Join[T1, T2]): Option[(T1, T2)] = Some((j.left, j.right))
+  def unapply[T1 <: ColumnBase[_], T2 <: ColumnBase[_]](j: Join[Query[T1], Query[T2]]): Option[(T1, T2)] = Some((j.left.value, j.right.value))
+  // def unapply[T1 <: Query[_], T2 <: Query[_]](j: Join[T1, T2]): Option[(T1, T2)] = Some((j.left, j.right))
 
   abstract class JoinType(val joinType: String)
   case object Inner extends JoinType("inner")

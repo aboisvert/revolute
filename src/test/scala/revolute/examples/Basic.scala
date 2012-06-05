@@ -4,13 +4,13 @@ import revolute._
 import revolute.query._
 import revolute.query.ImplicitConversions._
 
-object Persons extends Table[(String, Int)]("persons") {
+object Persons extends Table {
   def name = column[String]("id")
   def age = column[Int]("first")
   def * = name ~ age
 }
 
-object Follows extends Table[(String, String)]("follows") {
+object Follows extends Table {
   def follower = column[String]("follower")
   def followee = column[String]("followee")
   def * = follower ~ followee

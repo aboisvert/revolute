@@ -18,28 +18,16 @@ import scala.sys.error
 class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContext, val distinctTableIds: DistinctMap[TableBase[_]] = new DistinctMap[TableBase[_]]()) {
   protected implicit var _: NamingContext = nc
 
-  type Q = Query[_ <: ColumnBase[_]]
-  type J = Join[_ <: Q, _ <: Q]
+  import QueryTypes.{Q, J}
 
   val pipe: Pipe = {
     Console.println("***")
     Console.println("Build: " + query)
 
-    val joins: Seq[J] = query.modifiers collect { case j: J => j }
-    Console.println("joins: " + joins)
-
-    val queries = {
-      val queries: Seq[Q] = joins map { j => Seq(j.left, j.right) } flatten;
-      queries.distinct
+    if (query.subquery.nonEmpty && query.joinQueries.nonEmpty) {
+      sys.error("Can't have both joins and sub-queries")
     }
-    Console.println("linearized join queries: " + queries)
-
-    val queryBuilders: Map[Q, QueryBuilder[_]] = {
-      val builders = queries map { q => q -> new QueryBuilder(q, nc, distinctTableIds) }
-      Map(builders: _*)
-    }
-    // Console.println("queryPipes: " + queryBuilders)
-
+    
     val tables = EvaluationChain.tables(query.value)
     Console.println("tables: " + tables)
 
@@ -59,13 +47,24 @@ class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContex
     */
 
     // validate joins/table usage
+    val joins  : Seq[J] = query.modifiers collect { case j: J => j }
+    
     val headPipe = if (joins.size == 0) {
-      tables.size match {
-        case 0 => sys.error("No joins or tables specified in query")
-        case 1 => new Pipe(distinctTableIds.distinctId(tables.head, tables.head.tableName))
-        case n if n >= 2 => sys.error("Join required when using two or more tables in a query")
+      if (query.subquery.isDefined) {
+        new QueryBuilder(query.subquery.get, nc, distinctTableIds).pipe
+      } else { 
+        tables.size match {
+          case 0 => sys.error("No joins or tables specified in query")
+          case 1 => new Pipe(distinctTableIds.distinctId(tables.head, tables.head.tableName))
+          case n if n >= 2 => sys.error("Join required when using two or more tables in a query")
+        }
       }
+      
     } else {
+      Console.println("linearized join queries: " + query.joinQueries)
+      
+      val joinQueries = query.joinQueries
+      
       val left = joins(0).left
       joins foreach { j =>
         if (j.left != left) sys.error("The left side of all joins should use the same table/query")
@@ -82,11 +81,13 @@ class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContex
         if (! allTables.contains(t)) sys.error("Table/query %s not part of join clause" format t)
       }
 
-      val pipes = queries map queryBuilders map (_.pipe)
+      /*
+      val pipes = queryBuilders.values map (_.pipe)
       Console.println("pipes: " + pipes)
+      */
 
       val groupFields = {
-        val columns = queries map { q =>
+        val columns = joinQueries map { q =>
           val join = joins find { j => (j.left == q) || (j.right == q) } get;
           join.on match {
             case ColumnOps.Is(left, right) => if (q == join.left) left else right
@@ -98,7 +99,7 @@ class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContex
       Console.println("groupFields: " + groupFields)
 
       val (distinctColumnNames, declaredFields) = {
-        val defaultColumnNames = queries flatMap { q =>
+        val defaultColumnNames = joinQueries flatMap { q =>
           val columns = outputColumns(q.value)
           val names = outputNames(q.value)
           columns zip names
@@ -118,6 +119,8 @@ class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContex
       val joinTypes = Seq(true) ++ (joins map (_.joinType == Join.Inner))
       Console.println("join types: " + joinTypes)
 
+      val pipes = joinQueries map { q => new QueryBuilder(q, nc, distinctTableIds).pipe }
+      
       new CoGroup(pipes.toArray, groupFields.toArray, declaredFields, new MixedJoin(joinTypes.toArray))
     }
 
@@ -126,7 +129,8 @@ class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContex
     filters(query.cond, pipe)
     select(query.value, pipe)
     // _query.modifiers
-    Console.print("---" + query)
+    Console.println("---" + query)
+    Console.println("==>" + pipe.pipe)
     pipe.pipe
   }
 
@@ -172,7 +176,7 @@ class QueryBuilder[E <: ColumnBase[_]](val query: Query[E], val nc: NamingContex
   }
 
   protected def filterExpr(c: Any, pipe: PipeBuilder): Unit = {
-    Console.println("filterExpr: " + c)
+    //Console.println("filterExpr: " + c)
     c match {
       case ColumnOps.InSet(e, set) =>
         Console.println("in set: %s %s" format (e, set))
